@@ -61,7 +61,8 @@ class Dataset(torch_data.Dataset):
             "title_prefix": opts.title_prefix,
             "context_prefix": opts.context_prefix
         }
-        self.sort_data()
+        for example in self.examples:
+            example['ctxs'].sort(key = lambda x: float(x['score']), reverse = True)
 
     def __len__(self):
         return len(self.examples)
@@ -69,7 +70,8 @@ class Dataset(torch_data.Dataset):
     def __getitem__(self, index):
         example = self.examples[index]
         question = self.data_config['question_prefix'] + " " + example['question']
-        target = self.generate_target(example)
+        target = example.get('target',
+                             random.choice(example['answers']) + ' </s>')
 
         single_context_format = self.data_config["title_prefix"] + " {}" + \
                                 self.data_config["ocntext_prefix"] + " {}"
@@ -87,11 +89,5 @@ class Dataset(torch_data.Dataset):
             'scores': scores
         }
 
-    def sort_data(self):
-        for example in self.examples:
-            example['ctxs'].sort(key = lambda x: float(x['score']), reverse = True)
-
-    def generate_target(self, example: dict):
-        target = example.get('target',
-                             random.choice(example['answers']) + ' </s>')
-        return target
+    def get_example(self,index):
+        return self.examples[index]

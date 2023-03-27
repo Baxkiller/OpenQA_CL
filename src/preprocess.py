@@ -132,9 +132,9 @@ if __name__ == '__main__':
             originaltrain.append(example)
 
     # 抽取前200个问题的passages
-    train_passage_idxs = get_passage_idxs(200, NQ_passages["train"])
-    dev_passage_idxs = get_passage_idxs(200, NQ_passages["dev"])
-    test_passage_idxs = get_passage_idxs(200, NQ_passages["test"])
+    train_passage_idxs = get_passage_idxs(-1, NQ_passages["train"])
+    dev_passage_idxs = get_passage_idxs(-1, NQ_passages["dev"])
+    test_passage_idxs = get_passage_idxs(-1, NQ_passages["test"])
 
     passages_path = save_dir / 'psgs_w100.tsv'
     passage_path_save = save_dir / "filter_passages"

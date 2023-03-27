@@ -34,6 +34,7 @@ def download_fid_model(model_name: str, model_path: pathlib.Path):
 
 
 # From FiD codes
+# ------
 class FixedScheduler(torch.optim.lr_scheduler.LambdaLR):
     def __init__(self, optimizer, last_epoch = -1):
         super(FixedScheduler, self).__init__(optimizer, self.lr_lambda, last_epoch = last_epoch)
@@ -133,3 +134,12 @@ def load_model(load_path: str, model_class, opts, reset_params = False):
         optimizer, scheduler = get_init_optim(model, opts)
 
     return model, optimizer, scheduler, opt_checkpoint, step, best_eval_metric
+
+
+def avg_value(values: list):
+    return sum(values) / len(values)
+
+
+# -------
+def save_all(model, optimizer, scheduler, opts, cur_step, save_path, sub_name):
+    pass
