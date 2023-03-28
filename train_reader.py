@@ -9,6 +9,7 @@ import torch
 import numpy as np
 import random
 import transformers
+import json
 
 from pathlib import Path
 from src.options import Options
@@ -93,7 +94,11 @@ def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
             predictions_undecode = model.generate(
                 input_ids = context_ids.cuda(),
                 attention_mask = context_ids.cuda(),
-                max_length = opts.answer_maxlength)
+                max_length = opts.answer_maxlength,
+                n_beam = opts.n_beam,
+                do_sample = not opts.not_do_sample,
+                early_stop = not opts.not_early_stopping
+            )
 
             for map_index, prediction_undecode in enumerate(predictions_undecode):
                 prediction = tokenizer.decode(prediction_undecode, skip_special_tokens = True)
@@ -107,6 +112,25 @@ def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
 
 def get_target_answer(dataset: data_Util.Dataset, index: int):
     return dataset.get_example(index)["answer"]
+
+
+def test(model: FiDCL, dataloader, opts):
+    data = dataloader["train"]
+    model.eval()
+
+    with torch.no_grad():
+        for batch in data:
+            (idx, _, _, context_ids, context_mask) = batch
+            output = model.generate(
+                input_ids = context_ids.cuda(),
+                attention_mask = context_ids.cuda(),
+                max_length = opts.answer_maxlength,
+                n_beam = opts.n_beam,
+                do_sample = not opts.not_do_sample,
+                early_stop = not opts.not_early_stopping
+            )
+
+            return output, batch
 
 
 if __name__ == '__main__':
@@ -180,14 +204,23 @@ if __name__ == '__main__':
 
     eval_answer_get = partial(get_target_answer, dataset = datasets)
     logger.info("** Start training! **")
-    train(
-        model = model,
-        optimizer = optimizer,
-        scheduler = scheduler,
-        start_step = step,
-        dataloader = dataloader,
-        opts = opts,
-        best_dev_em = best_dev_em,
-        checkpoint_path = checkpoint_path,
-        eval_answer_get = eval_answer_get
-    )
+
+    output, batch = test(model = model, dataloader = dataloader, opts = opts)
+
+    test_save = Path("output")
+    test_save.mkdir(parents = True, exist_ok = True)
+    with open(test_save / "output", "w") as f1, open(test_save / "batch", "w") as f2:
+        json.dump(output, f1)
+        json.dump(test_save, f2)
+
+    # train(
+    #     model = model,
+    #     optimizer = optimizer,
+    #     scheduler = scheduler,
+    #     start_step = step,
+    #     dataloader = dataloader,
+    #     opts = opts,
+    #     best_dev_em = best_dev_em,
+    #     checkpoint_path = checkpoint_path,
+    #     eval_answer_get = eval_answer_get
+    # )

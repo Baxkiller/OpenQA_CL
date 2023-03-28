@@ -6,7 +6,7 @@
 # @Description:
 import os
 
-from pathlib import Path
+# from pathlib import Path
 
 # 测试options的使用
 # from src.options import Options
@@ -53,4 +53,30 @@ from pathlib import Path
 # print("a")
 
 # 测试os.path.exists(path)
-print(os.path.exists("README.md"))
+# print(os.path.exists("README.md"))
+
+# 测试kwargs
+# def test(a, **kwargs):
+#     print(a)
+#     print(type(kwargs.get("b", 0)))
+#
+#
+# test(a = 10, b = 15, c = 12)
+
+# 测试hasattr
+# t = {
+#     "a": 15,
+#     "b": 10
+# }
+# print(hasattr(t, "b"))
+# # False
+#
+# class tt(object):
+#     def __init__(self):
+#         self.a = 15
+#         self.b = 10
+#
+#
+# t2 = tt()
+# print(hasattr(t2, "b"))
+# # True

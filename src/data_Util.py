@@ -9,6 +9,30 @@ import json
 import random
 import torch
 import torch.utils.data as torch_data
+from transformers import T5Tokenizer
+
+
+def concat_question_contexts(example):
+    return [example["question"] + " " + t for t in example["passages"]]
+
+
+def encode_q_contexts(batch, tokenizer: T5Tokenizer, max_length):
+    ids, mask = [], []
+    for k, example in enumerate(batch):
+        out = tokenizer.batch_encode_plus(
+            batch_text_or_text_pairs = example,
+            max_length = max_length,
+            pad_to_max_length = True,
+            return_tensors = 'pt',
+            truncation = True
+        )
+
+        ids.append(out['input_ids'][None])
+        mask.append(out['attention_mask'][None])
+
+    ids = torch.cat(ids, dim = 0)
+    mask = torch.cat(mask, dim = 0)
+    return ids, mask
 
 
 class Collator():
@@ -18,8 +42,41 @@ class Collator():
     因此需要分别指定两者最大长度
     """
 
-    def __init__(self, tokenizer, context_maxlength, answer_maxlength):
-        pass
+    def __init__(self, tokenizer: T5Tokenizer, context_maxlength, answer_maxlength):
+        self.tokenizer = tokenizer
+        self.context_maxlength = context_maxlength
+        self.answer_maxlength = answer_maxlength
+
+    def __call__(self, batch):
+        """
+        传入一个batch的数据进行填充
+        """
+        assert (batch[0].get("target", None) is not None)
+
+        index = torch.tensor([example["index"] for example in batch])
+        target = [example["target"] for example in batch]
+        ques_context = [concat_question_contexts(example) for example in batch]
+
+        target_tok = self.tokenizer.batch_encode_plus(
+            batch_text_or_text_pairs = target,
+            max_length = self.answer_maxlength if self.answer_maxlength > 0 else None,
+            pad_to_max_length = True,
+            return_tensors = 'pt',
+            truncation = True if self.answer_maxlength > 0 else False
+        )
+
+        target_ids = target_tok["input_ids"]
+        target_mask = target_tok["attention_mask"].bool()
+        target_ids = target_ids.masked_fill(~target_mask, -100)
+
+        ques_context_ids, ques_context_mask = encode_q_contexts(
+            batch = ques_context,
+            tokenizer = self.tokenizer,
+            max_length = self.context_maxlength
+        )
+
+        return (index, target_ids, target_mask,
+                ques_context_ids, ques_context_mask)
 
 
 def load_data(data_path: pathlib.Path):
@@ -41,9 +98,9 @@ def load_data(data_path: pathlib.Path):
         if 'id' not in example:
             example['id'] = i
 
-        if 'score' not in example[0]:
+        if 'score' not in example['ctxs'][0]:
             score = 1.0 / (1 + i)
-            for context in example:
+            for context in example['ctxs']:
                 context['score'] = score
         examples.append(example)
 
@@ -89,5 +146,5 @@ class Dataset(torch_data.Dataset):
             'scores': scores
         }
 
-    def get_example(self,index):
+    def get_example(self, index):
         return self.examples[index]

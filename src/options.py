@@ -24,7 +24,7 @@ class Options(object):
                                  help = "如果模型不存在，从FiD网址中自动下载模型到model_path")
         self.parser.add_argument("--model_name", type = str, default = "none")
 
-        self.parser.add_argument("--checkpoint_dir", type = str, default = "./checkpoint/")
+        self.parser.add_argument("--checkpoint_dir", type = str, default = "./checkpoint")
         self.parser.add_argument("--batch_size", type = int, default = 1)
         self.parser.add_argument("--seed", type = int, default = 1)
         self.parser.add_argument("--running_id", type = int, default = 1)
@@ -37,7 +37,7 @@ class Options(object):
         self.parser.add_argument("--n_context", type = int, default = 1)
         self.parser.add_argument("--n_beam", type = int, default = 8)
         self.parser.add_argument("--not_do_sample", action = "store_true")
-        self.parser.add_argument("--early_stopping", action = "store_true")
+        self.parser.add_argument("--not_early_stopping", action = "store_true")
         self.parser.add_argument("--text_maxlength", type = int, default = 200,
                                  help = "包含提示语的上下文最大长度")
         self.parser.add_argument("--answer_maxlength", type = int, default = 40,
