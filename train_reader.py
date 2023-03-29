@@ -65,10 +65,11 @@ def train(model, optimizer, scheduler, start_step: int,
                     best_dev_em = score
                     Uitls.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
                                    sub_name = 'best_dev', best_match_score = best_dev_em)
-                    logger.info(f"Evaluate at:\t{cur_step}| {opts.total_steps} \n"
-                                f"Avg Loss:   \t{loss_sums / opts.eval_freq: .3f}\n"
-                                f"Eval score: \t{100 * score : .2f} \n"
-                                f"Cur lr :    \t{scheduler.get_last_lr()[0] :.5f}")
+
+                logger.info(f"Evaluate at:\t{cur_step}| {opts.total_steps} \n"
+                            f"Avg Loss:   \t{loss_sums / opts.eval_freq: .3f}\n"
+                            f"Eval score: \t{100 * score : .2f} \n"
+                            f"Cur lr :    \t{scheduler.get_last_lr()[0] :.5f}")
                 loss_sums = 0.0
 
             if cur_step % opts.save_freq == 0:
@@ -91,7 +92,7 @@ def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
     all_match_score = []
     n_candidate = opts.n_beam
     with torch.no_grad():
-        for i, batch in eval_dataloader:
+        for i, batch in enumerate(eval_dataloader):
             (index, _, _, context_ids, context_mask) = batch
 
             # 模型的generate仍然只会生成一个最终结果
@@ -144,7 +145,7 @@ if __name__ == '__main__':
 
     logger = init_logger(checkpoint_path / 'run.log')
 
-    model_flag = 't5-large'
+    model_flag = opts.token_flag
     model_class = FiDCL
     tokenizer = transformers.T5Tokenizer.from_pretrained(model_flag)
     collator = data_Util.Collator(
@@ -200,7 +201,7 @@ if __name__ == '__main__':
             Uitls.load_model(model_path, model_class, opts, reset_params = True)
         logger.info(f"model loaded from path {model_path}")
 
-    eval_answer_get = partial(get_target_answers, dataset = datasets)
+    eval_answer_get = partial(get_target_answers, dataset = datasets["eval"])
     logger.info("** Start training! **")
 
     train(

@@ -6,6 +6,7 @@
 # @Description: 一些评价指标
 import regex
 import string
+import evaluate
 
 
 def normalize_answer(s):
@@ -54,7 +55,7 @@ def evaluate_single_ans(ans, targets):
     value = max([compute_match_score(ans, target) for target in targets])
     return value
 
-
+# 使用em分数来评估生成的一组答案的质量
 def evaluate_group_ans(ans_group: list, targets: list):
     """
     ans_group:模型生成的一组答案

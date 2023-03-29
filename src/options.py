@@ -16,10 +16,12 @@ class Options(object):
         self.parser.add_argument("--question_prefix", type = str, default = "question:")
         self.parser.add_argument("--title_prefix", type = str, default = "title:")
         self.parser.add_argument("--context_prefix", type = str, default = "context:")
+        self.parser.add_argument("--output_path", type = str, default = "scored_candidates")
 
     def add_initial(self):
         self.parser.add_argument("--name", type = str, default = "my_experiment")
         self.parser.add_argument("--model_path", required = True, type = str)
+        self.parser.add_argument("--token_flag", required = True, type = str, default = 't5-base')
         self.parser.add_argument("--auto_load", action = "store_true",
                                  help = "如果模型不存在，从FiD网址中自动下载模型到model_path")
         self.parser.add_argument("--model_name", type = str, default = "none")
