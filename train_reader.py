@@ -15,6 +15,7 @@ from pathlib import Path
 from src.options import Options
 from src.logger import init_logger
 from src.model import FiDCL
+from src.FiD import FiDT5
 from src import data_Util, Uitls
 from torch.utils.data import DataLoader
 from functools import partial
@@ -114,28 +115,40 @@ def get_target_answer(dataset: data_Util.Dataset, index: int):
     return dataset.get_example(index)["answer"]
 
 
-def test(model: FiDCL, dataloader, opts):
+def test(model, dataloader, opts):
     data = dataloader["train"]
     model.eval()
-
+    logger.info("Generating Multi Candidates!")
     with torch.no_grad():
         for batch in data:
-            (idx, _, _, context_ids, context_mask) = batch
-            output = model.generate(
+            (idx, target_ids, target_mask, context_ids, context_mask) = batch
+            output1 = model.generate(
                 input_ids = context_ids.cuda(),
                 attention_mask = context_ids.cuda(),
                 max_length = opts.answer_maxlength,
-                n_beam = opts.n_beam,
-                do_sample = not opts.not_do_sample,
-                early_stop = not opts.not_early_stopping
             )
 
-            return output, batch
+            output2 = model.generate(
+                input_ids = context_ids.cuda(),
+                attention_mask = context_ids.cuda(),
+                max_length = opts.answer_maxlength,
+                num_beams = opts.n_beam,
+                num_return_sequences = opts.n_beam,
+            )
+            break
+    logger.info("Generating Over!")
+
+    predictions = []
+    questions = []
+    print(f"Target:{target_ids}")
+    print(f"Ouput1:{output1}")
+    print(f"Ouput2:{output2}")
 
 
 if __name__ == '__main__':
     opt = Options()
     opt.add_train_reader()
+    opt.add_optim()
     opts = opt.parse()
 
     torch.manual_seed(opts.seed)
@@ -144,10 +157,10 @@ if __name__ == '__main__':
     random.seed(opts.seed)
 
     checkpoint_path = Path(opts.checkpoint_dir) / opts.name / str(opts.running_id)
-    checkpoint_path_exist = checkpoint_path.exists()
+    checkpoint_path_exist = (checkpoint_path / "latest").exists()
     checkpoint_path.mkdir(parents = True, exist_ok = True)
     model_path = Path(opts.model_path)
-    model_path_exists = model_path.exists()
+    model_path_exists = (model_path / "pytorch_model.bin").exists()
 
     logger = init_logger(checkpoint_path / 'run.log')
 
@@ -159,6 +172,7 @@ if __name__ == '__main__':
         context_maxlength = opts.text_maxlength,
         answer_maxlength = opts.answer_maxlength)
 
+    logger.info("loading data from " + opts.train_data + " and " + opts.eval_data)
     data_paths = [Path(opts.train_data), Path(opts.eval_data)]
     data_name = ["train", "eval"]
 
@@ -169,6 +183,8 @@ if __name__ == '__main__':
     dataloader = {}
     for i, k in enumerate(data_name):
         data_examples[k] = data_Util.load_data(data_paths[i])
+        if data_examples[k] is None:
+            continue
         datasets[k] = data_Util.Dataset(data_examples[k], opts)
         # train时使用随机采样，eval使用顺序采样
         dataloader[k] = DataLoader(dataset = datasets[k], batch_size = opts.batch_size, shuffle = (k == "train"),
@@ -190,14 +206,16 @@ if __name__ == '__main__':
             logger.info(f"model path {model_path} not exists!")
             assert model_path_exists
 
-    elif checkpoint_path_exist:
+    # 如果checkpoint存在
+    if checkpoint_path_exist:
         load_path = checkpoint_path / 'checkpoint' / 'latest'
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = \
             Uitls.load_model(load_path, model_class, opts, reset_params = False)
         logger.info(f"model loaded from checkpoint {load_path}")
 
-    # 从model_path中加载模型
+    # 如果model_pth 存在
     else:
+        assert model_path_exists
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = \
             Uitls.load_model(model_path, model_class, opts, reset_params = True)
         logger.info(f"model loaded from path {model_path}")
@@ -205,13 +223,13 @@ if __name__ == '__main__':
     eval_answer_get = partial(get_target_answer, dataset = datasets)
     logger.info("** Start training! **")
 
-    output, batch = test(model = model, dataloader = dataloader, opts = opts)
+    test(model = model, dataloader = dataloader, opts = opts)
 
-    test_save = Path("output")
-    test_save.mkdir(parents = True, exist_ok = True)
-    with open(test_save / "output", "w") as f1, open(test_save / "batch", "w") as f2:
-        json.dump(output, f1)
-        json.dump(test_save, f2)
+    # test_save = Path("output")
+    # test_save.mkdir(parents = True, exist_ok = True)
+    # with open(test_save / "output.json", "w") as f1, open(test_save / "batch.json", "w") as f2:
+    #     json.dump(batch, f1)
+    #     json.dump(batch, f2)
 
     # train(
     #     model = model,

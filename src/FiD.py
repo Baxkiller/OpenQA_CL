@@ -59,13 +59,14 @@ class FiDT5(transformers.T5ForConditionalGeneration):
         )
 
     # We need to resize the inputs here, as the generate method expect 2D tensors
-    def generate(self, input_ids, attention_mask, max_length):
+    def generate(self, input_ids, attention_mask, max_length, **kwargs):
         self.encoder.n_passages = input_ids.size(1)
         return super().generate(
             # 注意这里！！相当于变相将n_passages个上下文联合，作为最后的sequence，用来生成答案!
             input_ids = input_ids.view(input_ids.size(0), -1),
             attention_mask = attention_mask.view(attention_mask.size(0), -1),
-            max_length = max_length
+            max_length = max_length,
+            **kwargs
         )
 
     #  Wrap T5 encoder to obtain a Fusion-in-Decoder model.

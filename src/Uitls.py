@@ -8,9 +8,15 @@ import os
 import pathlib
 import torch
 import logging
+import subprocess
 from transformers import T5ForConditionalGeneration
 
 logger = logging.getLogger(__name__)
+
+
+def run_command(command):
+    p = subprocess.Popen(command, shell = True)
+    return p.wait()
 
 
 def download_fid_model(model_name: str, model_path: pathlib.Path):
@@ -28,8 +34,12 @@ def download_fid_model(model_name: str, model_path: pathlib.Path):
         return False
 
     model_path.mkdir(parents = True, exist_ok = True)
-    command = f'wget -q0- {link} | tar xvz -C {model_path}'
-    os.system(command)
+    command = f'wget -qO- "{link}" | tar xvz -C {model_path}'
+    command2 = f'mv {model_path / model_name}/* {model_path}'
+    command3 = f'rm -r {model_path / model_name}'
+    run_command(command)
+    run_command(command2)
+    run_command(command3)
     return True
 
 
@@ -122,7 +132,7 @@ def load_model(load_path: str, model_class, opts, reset_params = False):
             best_eval_metric = checkpoint["best_dev_em"]
 
         if not reset_params:
-            optimizer, scheduler = get_init_optim(opt_checkpoint, model)
+            optimizer, scheduler = get_init_optim(model, opt_checkpoint)
             optimizer.load_state_dict(checkpoint["optimizer"])
             scheduler.load_state_dict(checkpoint["scheduler"])
         else:
@@ -133,6 +143,7 @@ def load_model(load_path: str, model_class, opts, reset_params = False):
         opt_checkpoint = opts
         optimizer, scheduler = get_init_optim(model, opts)
 
+    logger.info("Optimizer,Scheduler Finished!")
     return model, optimizer, scheduler, opt_checkpoint, step, best_eval_metric
 
 

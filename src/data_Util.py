@@ -83,7 +83,8 @@ def load_data(data_path: pathlib.Path):
     """
     load data from given `data_path`
     """
-    assert data_path.exists()
+    if not data_path.exists():
+        return None
     if data_path.suffix == ".jsonl":
         data = open(data_path, 'r')
     elif data_path.suffix == ".json":
@@ -118,8 +119,9 @@ class Dataset(torch_data.Dataset):
             "title_prefix": opts.title_prefix,
             "context_prefix": opts.context_prefix
         }
-        for example in self.examples:
-            example['ctxs'].sort(key = lambda x: float(x['score']), reverse = True)
+        if 'socre' in examples[0]['ctxs'][0]:
+            for example in self.examples:
+                example['ctxs'].sort(key = lambda x: float(x['score']), reverse = True)
 
     def __len__(self):
         return len(self.examples)
@@ -127,11 +129,13 @@ class Dataset(torch_data.Dataset):
     def __getitem__(self, index):
         example = self.examples[index]
         question = self.data_config['question_prefix'] + " " + example['question']
+        # 致命错误1
         target = example.get('target',
-                             random.choice(example['answers']) + ' </s>')
+                             random.choice(example['answers'])) + ' </s>'
 
-        single_context_format = self.data_config["title_prefix"] + " {}" + \
-                                self.data_config["ocntext_prefix"] + " {}"
+        # 致命错误2
+        single_context_format = self.data_config["title_prefix"] + " {} " + \
+                                self.data_config["context_prefix"] + " {}"
 
         contexts = example['ctxs'][:self.data_config["n_context"]]
         passages = [single_context_format.format(c['title'], c['text']) for c in contexts]
