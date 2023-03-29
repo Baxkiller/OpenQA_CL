@@ -25,13 +25,14 @@ from src import evaluate_metrics
 def train(model, optimizer, scheduler, start_step: int,
           dataloader: dict, opts, best_dev_em, checkpoint_path: Path, eval_answer_get):
     loss_sums = 0.0
-    num_epoch = 1
+    num_epoch = 0
     train_dataloader = dataloader["train"]
 
     model.train()
     cur_step = start_step
     while cur_step < opts.total_steps:
         num_epoch += 1
+        logger.info(f"Running on epoch : {num_epoch}")
         for i, batch in enumerate(train_dataloader):
             cur_step += 1
             (idxs, target_ids, target_mask, context_ids, context_mask) = batch
@@ -53,6 +54,7 @@ def train(model, optimizer, scheduler, start_step: int,
 
             # 每 eval_freq个step进行一次评估
             if cur_step % opts.eval_freq == 0:
+                logger.info("** Evaluate Model! **")
                 # 为模型提供一个分数
                 # 是此时模型生成答案的match score
                 score = evaluate_metric(model, dataloader["eval"], tokenizer = tokenizer, opts = opts,
@@ -62,7 +64,7 @@ def train(model, optimizer, scheduler, start_step: int,
                 if score > best_dev_em:
                     best_dev_em = score
                     Uitls.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
-                                   sub_name = 'best_dev')
+                                   sub_name = 'best_dev', best_match_score = best_dev_em)
                     logger.info(f"Evaluate at:\t{cur_step}| {opts.total_steps} \n"
                                 f"Avg Loss:   \t{loss_sums / opts.eval_freq: .3f}\n"
                                 f"Eval score: \t{100 * score : .2f} \n"
@@ -71,7 +73,7 @@ def train(model, optimizer, scheduler, start_step: int,
 
             if cur_step % opts.save_freq == 0:
                 Uitls.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
-                               sub_name = 'best_dev')
+                               sub_name = 'checkpoint')
 
             if cur_step > opts.total_steps:
                 break
@@ -79,6 +81,7 @@ def train(model, optimizer, scheduler, start_step: int,
 
 
 def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
+    """评估模型此时在dev数据集上的分数"""
     model.eval()
 
     if hasattr(model, "module"):
@@ -86,6 +89,7 @@ def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
         model = model.module
 
     all_match_score = []
+    n_candidate = opts.n_beam
     with torch.no_grad():
         for i, batch in eval_dataloader:
             (index, _, _, context_ids, context_mask) = batch
@@ -94,55 +98,31 @@ def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
             # 模拟正常情况下的预测行为
             predictions_undecode = model.generate(
                 input_ids = context_ids.cuda(),
-                attention_mask = context_ids.cuda(),
+                attention_mask = context_mask.cuda(),
                 max_length = opts.answer_maxlength,
-                n_beam = opts.n_beam,
-                do_sample = not opts.not_do_sample,
-                early_stop = not opts.not_early_stopping
+                num_beams = n_candidate,
+                num_return_sequences = n_candidate,
+                early_stopping = True,
+                temperature = opts.temperature
             )
 
+            each_question = []
+            # 求每个问题生成的一组答案的评价分数
             for map_index, prediction_undecode in enumerate(predictions_undecode):
                 prediction = tokenizer.decode(prediction_undecode, skip_special_tokens = True)
-                target_ans = get_answer(index = index[map_index])
-                match_score = evaluate_metrics.evaluate_single_ans(prediction, target_ans)
-                all_match_score.append(match_score)
+                each_question.append(prediction)
+                if (map_index + 1) % n_candidate == 0:
+                    target_ans = get_answer(index = index[map_index // n_candidate])
+                    match_score = evaluate_metrics.evaluate_group_ans(ans_group = each_question, targets = target_ans)
+                    each_question = []
+                    all_match_score.append(match_score)
 
     avg_match_score = Uitls.avg_value(all_match_score)
     return avg_match_score
 
 
-def get_target_answer(dataset: data_Util.Dataset, index: int):
-    return dataset.get_example(index)["answer"]
-
-
-def test(model, dataloader, opts):
-    data = dataloader["train"]
-    model.eval()
-    logger.info("Generating Multi Candidates!")
-    with torch.no_grad():
-        for batch in data:
-            (idx, target_ids, target_mask, context_ids, context_mask) = batch
-            output1 = model.generate(
-                input_ids = context_ids.cuda(),
-                attention_mask = context_ids.cuda(),
-                max_length = opts.answer_maxlength,
-            )
-
-            output2 = model.generate(
-                input_ids = context_ids.cuda(),
-                attention_mask = context_ids.cuda(),
-                max_length = opts.answer_maxlength,
-                num_beams = opts.n_beam,
-                num_return_sequences = opts.n_beam,
-            )
-            break
-    logger.info("Generating Over!")
-
-    predictions = []
-    questions = []
-    print(f"Target:{target_ids}")
-    print(f"Ouput1:{output1}")
-    print(f"Ouput2:{output2}")
+def get_target_answers(dataset: data_Util.Dataset, index: int):
+    return dataset.get_example(index)["answers"]
 
 
 if __name__ == '__main__':
@@ -164,7 +144,7 @@ if __name__ == '__main__':
 
     logger = init_logger(checkpoint_path / 'run.log')
 
-    model_flag = 't5-base'
+    model_flag = 't5-large'
     model_class = FiDCL
     tokenizer = transformers.T5Tokenizer.from_pretrained(model_flag)
     collator = data_Util.Collator(
@@ -208,7 +188,7 @@ if __name__ == '__main__':
 
     # 如果checkpoint存在
     if checkpoint_path_exist:
-        load_path = checkpoint_path / 'checkpoint' / 'latest'
+        load_path = checkpoint_path / 'latest'
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = \
             Uitls.load_model(load_path, model_class, opts, reset_params = False)
         logger.info(f"model loaded from checkpoint {load_path}")
@@ -220,25 +200,17 @@ if __name__ == '__main__':
             Uitls.load_model(model_path, model_class, opts, reset_params = True)
         logger.info(f"model loaded from path {model_path}")
 
-    eval_answer_get = partial(get_target_answer, dataset = datasets)
+    eval_answer_get = partial(get_target_answers, dataset = datasets)
     logger.info("** Start training! **")
 
-    test(model = model, dataloader = dataloader, opts = opts)
-
-    # test_save = Path("output")
-    # test_save.mkdir(parents = True, exist_ok = True)
-    # with open(test_save / "output.json", "w") as f1, open(test_save / "batch.json", "w") as f2:
-    #     json.dump(batch, f1)
-    #     json.dump(batch, f2)
-
-    # train(
-    #     model = model,
-    #     optimizer = optimizer,
-    #     scheduler = scheduler,
-    #     start_step = step,
-    #     dataloader = dataloader,
-    #     opts = opts,
-    #     best_dev_em = best_dev_em,
-    #     checkpoint_path = checkpoint_path,
-    #     eval_answer_get = eval_answer_get
-    # )
+    train(
+        model = model,
+        optimizer = optimizer,
+        scheduler = scheduler,
+        start_step = step,
+        dataloader = dataloader,
+        opts = opts,
+        best_dev_em = best_dev_em,
+        checkpoint_path = checkpoint_path,
+        eval_answer_get = eval_answer_get
+    )

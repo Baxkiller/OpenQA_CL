@@ -29,23 +29,29 @@ class Options(object):
         self.parser.add_argument("--seed", type = int, default = 1)
         self.parser.add_argument("--running_id", type = int, default = 1)
 
-    # options needed for training reader
-    def add_train_reader(self):
-        self.add_data_process()
-        self.parser.add_argument("--train_data", required = True, type = str)
-        self.parser.add_argument("--eval_data", type = str, default = 'none')
-        self.parser.add_argument("--n_context", type = int, default = 1)
+    def add_candidates(self):
         self.parser.add_argument("--n_beam", type = int, default = 8)
         self.parser.add_argument("--not_do_sample", action = "store_true")
         self.parser.add_argument("--not_early_stopping", action = "store_true")
+        self.parser.add_argument("--temperature", type = float, default = 0.8)
+
+    # options needed for training reader
+    def add_train_reader(self):
+        self.add_data_process()
+        self.add_candidates()
+        self.parser.add_argument("--train_data", required = True, type = str)
+        self.parser.add_argument("--eval_data", type = str, default = 'none')
+        self.parser.add_argument('--total_steps', type = int, default = 1000)
+        self.parser.add_argument("--n_context", type = int, default = 1)
         self.parser.add_argument("--text_maxlength", type = int, default = 200,
                                  help = "包含提示语的上下文最大长度")
         self.parser.add_argument("--answer_maxlength", type = int, default = 40,
                                  help = "生成答案的最大长度")
+        self.parser.add_argument("--eval_freq", type = int, default = 500)
+        self.parser.add_argument("--save_freq", type = int, default = 5000)
 
     def add_optim(self):
         self.parser.add_argument('--warmup_steps', type = int, default = 1000)
-        self.parser.add_argument('--total_steps', type = int, default = 1000)
         self.parser.add_argument('--scheduler_steps', type = int, default = None,
                                  help = 'scheduler的总步数, 如果不给定，scheduler_total_step = total_step')
         self.parser.add_argument('--accumulation_steps', type = int, default = 1)

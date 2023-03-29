@@ -31,25 +31,13 @@ class FiDCL(FiD.FiDT5):
         """
         # 注意此处input_ids: (bsz,n_passages,indexing_dimen)
         self.encoder.n_passages = input_ids.size(1)
-        if kwargs.get("n_beam", None) is None:
-            return super(FiD.FiDT5, self).generate(
-                # 将所有n_passages合并
-                input_ids = input_ids.view(input_ids.size(0), -1),
-                attention_mask = attention_mask.view(attention_mask.size(0), -1),
-                max_length = max_length,
-            )
-        else:
-            num_beams = kwargs.get("num_beam")
-            do_sample = kwargs.get("do_sample", False)
-            early_stop = kwargs.get("early_stop", False)
-            return super(FiD.FiDT5, self).generate(
-                input_ids = input_ids.view(input_ids.size(0),-1),
-                attention_mask = attention_mask.view(attention_mask.size(0),-1),
-                max_length = max_length,
-                num_beams = num_beams,
-                do_sample = do_sample,
-                early_stopping = early_stop
-            )
+        return super(FiD.FiDT5, self).generate(
+            # 将所有n_passages合并
+            input_ids = input_ids.view(input_ids.size(0), -1),
+            attention_mask = attention_mask.view(attention_mask.size(0), -1),
+            max_length = max_length,
+            **kwargs
+        )
 
     def loss_em(self, input_ids, attention_mask, **kwargs):
         pass

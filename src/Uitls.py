@@ -5,6 +5,7 @@
 # @Software   : PyCharm
 # @Description: 除数据外的相关工具，例如提供模型下载等操作
 import os
+import errno
 import pathlib
 import torch
 import logging
@@ -44,7 +45,6 @@ def download_fid_model(model_name: str, model_path: pathlib.Path):
 
 
 # From FiD codes
-# ------
 class FixedScheduler(torch.optim.lr_scheduler.LambdaLR):
     def __init__(self, optimizer, last_epoch = -1):
         super(FixedScheduler, self).__init__(optimizer, self.lr_lambda, last_epoch = last_epoch)
@@ -124,12 +124,12 @@ def load_model(load_path: str, model_class, opts, reset_params = False):
 
     if optimizer_path_exists:
         checkpoint = torch.load(optimizer_path, map_location = device)
-        opt_checkpoint = checkpoint["opt"]
+        opt_checkpoint = checkpoint["opts"]
         step = checkpoint["step"]
         if "best_eval_metric" in checkpoint:
             best_eval_metric = checkpoint["best_eval_metric"]
         else:
-            best_eval_metric = checkpoint["best_dev_em"]
+            best_eval_metric = checkpoint["best_match_score"]
 
         if not reset_params:
             optimizer, scheduler = get_init_optim(model, opt_checkpoint)
@@ -151,6 +151,41 @@ def avg_value(values: list):
     return sum(values) / len(values)
 
 
-# -------
-def save_all(model, optimizer, scheduler, opts, cur_step, save_path, sub_name):
-    pass
+def save_all(model, optimizer, scheduler, opts, cur_step, save_path: pathlib.Path, sub_name, best_match_score):
+    """
+    保存当前状态下的模型等
+    checkpoint_dir/name/running_id
+        - sub_name(checkpoint/best_dev/latest)
+    """
+    model_to_save = model.module if hasattr(model, "module") else model
+
+    true_save_path = save_path / sub_name
+    true_save_path.mkdir(parents = True, exist_ok = True)
+    optimizer_path = true_save_path / "optimizer.path.tar"
+
+    model_to_save.save_pretrained(true_save_path)
+    checkpoint = {
+        "step": cur_step,
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "opts": opts,
+        "best_match_score": best_match_score,
+    }
+    torch.save(checkpoint, optimizer_path)
+
+    soft_link_file = save_path / "latest"
+    make_soft_link(true_save_path, soft_link_file)
+
+
+def make_soft_link(true_file, soft_link_file):
+    """
+    创建一条target链接，连到true文件上
+    """
+    try:
+        os.symlink(true_file, soft_link_file)
+    except OSError as e:
+        if e.errno == errno.EEXIST:
+            os.remove(soft_link_file)
+            os.symlink(true_file, soft_link_file)
+        else:
+            raise e

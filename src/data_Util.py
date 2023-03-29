@@ -13,6 +13,8 @@ from transformers import T5Tokenizer
 
 
 def concat_question_contexts(example):
+    if example["passages"] is None:
+        return example["question"]
     return [example["question"] + " " + t for t in example["passages"]]
 
 
@@ -20,7 +22,7 @@ def encode_q_contexts(batch, tokenizer: T5Tokenizer, max_length):
     ids, mask = [], []
     for k, example in enumerate(batch):
         out = tokenizer.batch_encode_plus(
-            batch_text_or_text_pairs = example,
+            example,
             max_length = max_length,
             pad_to_max_length = True,
             return_tensors = 'pt',
@@ -32,7 +34,8 @@ def encode_q_contexts(batch, tokenizer: T5Tokenizer, max_length):
 
     ids = torch.cat(ids, dim = 0)
     mask = torch.cat(mask, dim = 0)
-    return ids, mask
+    # 致命错误3
+    return ids, mask.bool()
 
 
 class Collator():
@@ -51,14 +54,14 @@ class Collator():
         """
         传入一个batch的数据进行填充
         """
-        assert (batch[0].get("target", None) is not None)
+        assert batch[0]["target"] is not None
 
         index = torch.tensor([example["index"] for example in batch])
         target = [example["target"] for example in batch]
         ques_context = [concat_question_contexts(example) for example in batch]
 
         target_tok = self.tokenizer.batch_encode_plus(
-            batch_text_or_text_pairs = target,
+            target,
             max_length = self.answer_maxlength if self.answer_maxlength > 0 else None,
             pad_to_max_length = True,
             return_tensors = 'pt',
