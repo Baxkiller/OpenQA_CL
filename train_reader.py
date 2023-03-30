@@ -74,7 +74,7 @@ def train(model, optimizer, scheduler, start_step: int,
 
             if cur_step % opts.save_freq == 0:
                 Uitls.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
-                               sub_name = 'checkpoint')
+                               sub_name = 'checkpoint', best_match_score = best_dev_em)
 
             if cur_step > opts.total_steps:
                 break

@@ -13,7 +13,6 @@ import transformers
 from pathlib import Path
 from functools import partial
 from src.logger import init_logger
-import src.evaluate_metrics as eval
 from src.options import Options
 from src.model import FiDCL
 from torch.utils.data import DataLoader
@@ -55,11 +54,12 @@ def evaluate_metric(model, dataloaders, tokenizer, opts, get_answer, save_path):
                     prediction = tokenizer.decode(prediction_undecode, skip_special_tokens = True)
                     each_question.append(prediction)
                     if (map_index + 1) % n_candidate == 0:
-                        target_ans = get_answer[key](index = index[map_index // n_candidate])
-                        scores = [evaluate_metrics.evaluate_single_ans(ans, targets = target_ans) for ans in
+                        question, target_ans = get_answer[key](index = index[map_index // n_candidate])
+                        scores = [int(evaluate_metrics.evaluate_single_ans(ans, targets = target_ans)) for ans in
                                   each_question]
                         all_candidates.append({
-                            "index": index[map_index // n_candidate],
+                            "index": index[map_index // n_candidate].item(),
+                            "question": question,
                             "candidates": each_question,
                             "targets": target_ans,
                             "em_scores": scores
@@ -71,8 +71,9 @@ def evaluate_metric(model, dataloaders, tokenizer, opts, get_answer, save_path):
             logger.info(f"Generating of {key} finished")
 
 
-def get_target_answers(dataset: data_Util.Dataset, index: int):
-    return dataset.get_example(index)["answers"]
+def get_question_answers(dataset: data_Util.Dataset, index: int):
+    example = dataset.get_example(index)
+    return example["question"], example["answers"]
 
 
 if __name__ == '__main__':
@@ -142,8 +143,8 @@ if __name__ == '__main__':
         Uitls.load_model(model_path, model_class, opts, reset_params = True)
     logger.info(f"model loaded from path {model_path}")
 
-    eval_answer_get = partial(get_target_answers, dataset = datasets["eval"])
-    train_answer_get = partial(get_target_answers, dataset = datasets["train"])
+    eval_answer_get = partial(get_question_answers, dataset = datasets["eval"])
+    train_answer_get = partial(get_question_answers, dataset = datasets["train"])
     get_answer = {
         "train": train_answer_get,
         "eval": eval_answer_get
