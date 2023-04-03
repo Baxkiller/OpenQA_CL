@@ -1,7 +1,7 @@
 # -*- codeing = utf-8 -*-
 # @Time       : 2023/3/25 18:57
 # @Author     : Baxkiller
-# @File       : Uitls.py
+# @File       : Utils.py
 # @Software   : PyCharm
 # @Description: 除数据外的相关工具，例如提供模型下载等操作
 import os

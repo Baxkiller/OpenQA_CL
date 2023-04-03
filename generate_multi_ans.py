@@ -16,7 +16,7 @@ from src.logger import init_logger
 from src.options import Options
 from src.model import FiDCL
 from torch.utils.data import DataLoader
-from src import Uitls, data_Util, evaluate_metrics
+from src import Utils, data_Util, evaluate_metrics
 
 
 def evaluate_metric(model, dataloaders, tokenizer, opts, get_answer, save_path):
@@ -127,7 +127,7 @@ if __name__ == '__main__':
     # 本身检查点不存在，模型也不在
     if not model_path_exists:
         if opts.auto_load:
-            load_success = Uitls.download_fid_model(model_name = opts.model_name, model_path = model_path)
+            load_success = Utils.download_fid_model(model_name = opts.model_name, model_path = model_path)
             logger.info(f"Downloading model {opts.model_name} " + ("successfully!" if load_success else "failed!"))
             # 如果失败，退出程序
             assert load_success
@@ -140,7 +140,7 @@ if __name__ == '__main__':
 
     assert model_path_exists
     model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = \
-        Uitls.load_model(model_path, model_class, opts, reset_params = True)
+        Utils.load_model(model_path, model_class, opts, reset_params = True)
     logger.info(f"model loaded from path {model_path}")
 
     eval_answer_get = partial(get_question_answers, dataset = datasets["eval"])

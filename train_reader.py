@@ -16,7 +16,7 @@ from src.options import Options
 from src.logger import init_logger
 from src.model import FiDCL
 from src.FiD import FiDT5
-from src import data_Util, Uitls
+from src import data_Util, Utils
 from torch.utils.data import DataLoader
 from functools import partial
 from src import evaluate_metrics
@@ -63,7 +63,7 @@ def train(model, optimizer, scheduler, start_step: int,
 
                 if score > best_dev_em:
                     best_dev_em = score
-                    Uitls.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
+                    Utils.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
                                    sub_name = 'best_dev', best_match_score = best_dev_em)
 
                 logger.info(f"Evaluate at:\t{cur_step}| {opts.total_steps} \n"
@@ -73,12 +73,11 @@ def train(model, optimizer, scheduler, start_step: int,
                 loss_sums = 0.0
 
             if cur_step % opts.save_freq == 0:
-                Uitls.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
+                Utils.save_all(model, optimizer, scheduler, opts, cur_step, save_path = checkpoint_path,
                                sub_name = 'checkpoint', best_match_score = best_dev_em)
 
             if cur_step > opts.total_steps:
                 break
-    logger.info("** Training Finished **")
 
 
 def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
@@ -116,9 +115,10 @@ def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
                     target_ans = get_answer(index = index[map_index // n_candidate])
                     match_score = evaluate_metrics.evaluate_group_ans(ans_group = each_question, targets = target_ans)
                     each_question = []
-                    all_match_score.append(match_score)
+                    # 之前使用append(match_score=sum,现在使用avg)
+                    all_match_score.append(match_score / n_candidate)
 
-    avg_match_score = Uitls.avg_value(all_match_score)
+    avg_match_score = Utils.avg_value(all_match_score)
     return avg_match_score
 
 
@@ -178,10 +178,11 @@ if __name__ == '__main__':
     # 本身检查点不存在，模型也不在
     if not checkpoint_path_exist and not model_path_exists:
         if opts.auto_load:
-            load_success = Uitls.download_fid_model(model_name = opts.model_name, model_path = model_path)
+            load_success = Utils.download_fid_model(model_name = opts.model_name, model_path = model_path)
             logger.info(f"Downloading model {opts.model_name} " + ("successfully!" if load_success else "failed!"))
             # 如果失败，退出程序
             assert load_success
+            model_path_exists = load_success
             model_path_exists = load_success
         else:
             logger.info(f"model path {model_path} not exists!")
@@ -191,14 +192,14 @@ if __name__ == '__main__':
     if checkpoint_path_exist:
         load_path = checkpoint_path / 'latest'
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = \
-            Uitls.load_model(load_path, model_class, opts, reset_params = False)
+            Utils.load_model(load_path, model_class, opts, reset_params = False)
         logger.info(f"model loaded from checkpoint {load_path}")
 
     # 如果model_pth 存在
     else:
         assert model_path_exists
         model, optimizer, scheduler, opt_checkpoint, step, best_dev_em = \
-            Uitls.load_model(model_path, model_class, opts, reset_params = True)
+            Utils.load_model(model_path, model_class, opts, reset_params = True)
         logger.info(f"model loaded from path {model_path}")
 
     eval_answer_get = partial(get_target_answers, dataset = datasets["eval"])
@@ -215,3 +216,4 @@ if __name__ == '__main__':
         checkpoint_path = checkpoint_path,
         eval_answer_get = eval_answer_get
     )
+    logger.info("** Training Finished **")

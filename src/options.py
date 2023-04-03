@@ -65,6 +65,15 @@ class Options(object):
         self.parser.add_argument('--weight_decay', type = float, default = 0.1)
         self.parser.add_argument('--fixed_lr', action = 'store_true')
 
+    def add_retriever(self):
+        self.parser.add_argument("--question_maxlength", type = int, default = 40)
+        self.parser.add_argument("--context_maxlegnth", type = int, default = 200)
+        self.parser.add_argument("--train_data", required = True, type = str, default = 'none')
+        self.parser.add_argument("--eval_data", type = str, default = 'none')
+        self.parser.add_argument("--eval_freq", type = int, default = 500)
+        self.parser.add_argument("--save_freq", type = int, default = 5000)
+        self.parser.add_argument()
+
     def parse(self):
         opt = self.parser.parse_args()
         return opt

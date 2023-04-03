@@ -82,6 +82,49 @@ class Collator():
                 ques_context_ids, ques_context_mask)
 
 
+class R_Collator():
+    """
+    考虑到Retriever的填充器作用对象
+    分别是question与上下文
+    """
+
+    def __init__(self, tokenizer, question_maxlength, context_maxlength):
+        self.tokenizer = tokenizer
+        self.question_max_length = question_maxlength
+        self.context_maxlength = context_maxlength
+
+    def __call__(self, examples):
+        """传入的为一些example"""
+        indexs = [example["index"] for example in examples]
+        questions = [example["question"] for example in examples]
+        scores = None
+        passages_ids = None
+        passages_mask = None
+
+        if examples[0]['score'] is not None:
+            # 每一个score都应该是n_context长度的数组
+            scores = [example['score'] for example in examples]
+            # 将多个一维tensor合并为二维tensor
+            scores = torch.stack()
+
+        if examples[0]['passages'] is not None:
+            passages = [example['passages'] for example in examples]
+            passages_id, passages_mask = \
+                encode_q_contexts(passages, tokenizer = self.tokenizer, max_length = self.context_maxlength)
+
+        question_token = self.tokenizer.batch_encode_plus(
+            questions,
+            pad_to_max_length = True,
+            max_length = self.question_max_length,
+            truncation = True,
+            return_tensors = 'pt'
+        )
+        question_ids, question_mask = question_token["input_ids"], \
+                                      question_token["attention_mask"].bool()
+
+        return (indexs, question_ids, question_mask, passages_ids, passages_mask, scores)
+
+
 def load_data(data_path: pathlib.Path):
     """
     load data from given `data_path`

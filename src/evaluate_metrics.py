@@ -7,6 +7,7 @@
 import regex
 import string
 import evaluate
+import numpy as np
 
 
 def normalize_answer(s):
@@ -55,6 +56,7 @@ def evaluate_single_ans(ans, targets):
     value = max([compute_match_score(ans, target) for target in targets])
     return value
 
+
 # 使用em分数来评估生成的一组答案的质量
 def evaluate_group_ans(ans_group: list, targets: list):
     """
@@ -62,4 +64,67 @@ def evaluate_group_ans(ans_group: list, targets: list):
     targets: 监督数据给出的一组标准答案
     返回这组答案的平均分数
     """
-    return sum([evaluate_single_ans(ans,targets) for ans in ans_group])
+    return sum([evaluate_single_ans(ans, targets) for ans in ans_group])
+
+
+def inverse_cnt_compute(nums: np.ndarray):
+    """求逆序数"""
+    inv_count = 0
+    lenarr = len(nums)
+    for i in range(lenarr):
+        for j in range(i + 1, lenarr):
+            if (nums[i] > nums[j]):
+                inv_count += 1
+    return inv_count
+
+
+### 用于训练retriever的训练器
+
+def get_last_true(values: np.ndarray):
+    for i in range(len(values), 0, -1):
+        if values[i - 1]:
+            return i
+    return 0
+
+
+def get_last_true_fast(values: np.ndarray):
+    # find the indices of all True values
+    indices = np.nonzero(values)[0]  # if indices is not empty, return the max index
+    if indices.size > 0:
+        return indices.max() + 1
+    else:
+        return 0
+
+
+# score:bsz,n_passages
+def evaluate_passages_sort(scores: list, inverse_cnt: list, topk_true: dict, topk_last_idx: dict):
+    """评估retriever生成的分数的损失情况"""
+    # 测量batch中的每个问题对应搜索到的passages的排序
+    for score in scores:
+        score = score.cpu().numpy()
+        # 从大到小排序
+        decrease_score_index = np.argsort(-score)
+        inverse_cnt.append(inverse_cnt_compute(decrease_score_index))
+
+        for k in topk_true:
+            predict_topk = (decrease_score_index[:, k] < k).mean()
+            topk_true[k].append(predict_topk)
+        for k in topk_last_idx:
+            lt_k = decrease_score_index < k
+            # 找到最后一个为true的位置
+            topk_last_idx[k].append(get_last_true_fast(lt_k))
+
+
+# if __name__ == '__main__':
+#     test = np.array(range(8))
+#     np.random.seed(0)
+#     for i in range(100):
+#         np.random.shuffle(test)
+#         k = 1
+#         if get_last_true_fast(test < k) != get_last_true(test < k):
+#             print("www")
+
+    # x = test
+    # below_k = (x < k)
+    # # number of passages required to obtain all passages from gold top-k
+    # idx_gold_topk = len(x) - np.argmax(below_k[::-1])
