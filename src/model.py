@@ -7,6 +7,7 @@
 from src import FiD
 import numpy as np
 import torch
+from src import evaluate_metrics
 from torch import nn, einsum
 from transformers import RobertaModel, PreTrainedModel, BertModel
 
@@ -57,13 +58,43 @@ class FiDCL(FiD.FiDT5):
 
 
 class Reranker(nn.Module):
-    def __init__(self, encoder_flag, pad_token_id):
-        super(Reranker, self).__init__()
-        self.encoder = RobertaModel.from_pretrained()
-        self.pad_token_id = pad_token_id
+    def __init__(self, encoder_flag = None, pad_token_id = None, evaluate = "em"):
+        evaluate_dict = {
+            "em": evaluate_metrics.em_group_ans,
+            "bleu": evaluate_metrics.bleu_group_ans,
+            "glue": evaluate_metrics.glue_group_ans,
+            "meteor": evaluate_metrics.meteor_group_ans,
+        }
+        assert evaluate in evaluate_dict
+        self.evaluate_metric = evaluate_dict[evaluate]
 
-    def forward(self, scores, candidates_ids, target_ids):
+    # super(Reranker, self).__init__()
+    # self.encoder = RobertaModel.from_pretrained(encoder_flag)
+    # self.pad_token_id = pad_token_id
+
+    def forward(self, candidates_ids, target_ids, question_ids, gold_scores):
+        """训练排序器"""
         pass
+
+    def generate(self, question_ids):
+        """使用训练好的排序器，对当前传入的candidate产生评分"""
+        pass
+
+    def rerank(self, n_candidates, candidates, targets = None):
+        """
+        对传入的candidates进行排序，
+        返回最高分答案与对应分数
+        """
+        # 有标准答案时，按照既定规则进行评估
+        if targets is not None:
+            # 这个分数应该是
+            match_score = self.evaluate_metric(ans_group = candidates, targets = targets)
+        else:
+            match_score = self.generate(candidates)
+
+        sort_idx = np.argsort(match_score)
+        best_index = sort_idx[-1]
+        return candidates[best_index], int(match_score[best_index])
 
 
 class Retriever(PreTrainedModel):
@@ -129,3 +160,10 @@ class Retriever(PreTrainedModel):
             else:
                 text_output = torch.mean(text_output, dim = 1)
         return text_output
+
+# if __name__ == '__main__':
+#     ans_group = ["aaa", "bbb", "ccc"]
+#     targets = ["aaa"]
+#     reranker = Reranker(evaluate = "em")
+#     a, b = reranker.rerank(candidates = ans_group, n_candidates = 3, targets = targets)
+#     print(a, b)

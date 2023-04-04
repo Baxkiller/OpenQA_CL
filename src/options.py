@@ -66,13 +66,26 @@ class Options(object):
         self.parser.add_argument('--fixed_lr', action = 'store_true')
 
     def add_retriever(self):
+        self.add_data_process()
+        self.add_candidates()
         self.parser.add_argument("--question_maxlength", type = int, default = 40)
         self.parser.add_argument("--context_maxlegnth", type = int, default = 200)
+        self.parser.add_argument("--total_steps", type = int, default = 10000)
+        self.parser.add_argument("--n_context", type = int, default = 1)
         self.parser.add_argument("--train_data", required = True, type = str, default = 'none')
         self.parser.add_argument("--eval_data", type = str, default = 'none')
         self.parser.add_argument("--eval_freq", type = int, default = 500)
         self.parser.add_argument("--save_freq", type = int, default = 5000)
-        self.parser.add_argument()
+
+    def add_reranker(self):
+        self.parser.add_argument("--reranker_model_path", type = str, default = "None")
+        self.parser.add_argument("--encoder_flag", type = str, default = "roberta-base")
+        self.parser.add_argument("--evaluate_type", type = str, default = "em")
+        self.parser.add_argument("--eval_print_freq", type = int, default = 500)
+
+    def add_generate_passage_scores(self):
+        self.parser.add_argument('--write_results', action = 'store_true')
+        self.parser.add_argument('--write_attention_scores', action = 'store_true')
 
     def parse(self):
         opt = self.parser.parse_args()

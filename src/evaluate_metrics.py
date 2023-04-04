@@ -57,15 +57,30 @@ def evaluate_single_ans(ans, targets):
     return value
 
 
+##########################答案评估方法############################
 # 使用em分数来评估生成的一组答案的质量
-def evaluate_group_ans(ans_group: list, targets: list):
+def em_group_ans(ans_group: list, targets: list):
     """
     ans_group:模型生成的一组答案
     targets: 监督数据给出的一组标准答案
     返回这组答案的平均分数
     """
-    return sum([evaluate_single_ans(ans, targets) for ans in ans_group])
+    return [evaluate_single_ans(ans, targets) for ans in ans_group]
 
+
+def glue_group_ans(ans_group: list, targets: list):
+    pass
+
+
+def bleu_group_ans(ans_group: list, targets: list):
+    pass
+
+
+def meteor_group_ans(ans_group: list, targets: list):
+    pass
+
+
+######################################################
 
 def inverse_cnt_compute(nums: np.ndarray):
     """求逆序数"""
@@ -116,15 +131,13 @@ def evaluate_passages_sort(scores: list, inverse_cnt: list, topk_true: dict, top
 
 
 # if __name__ == '__main__':
-#     test = np.array(range(8))
-#     np.random.seed(0)
-#     for i in range(100):
-#         np.random.shuffle(test)
-#         k = 1
-#         if get_last_true_fast(test < k) != get_last_true(test < k):
-#             print("www")
+#     ans_group = ["aaa", "bbb", "ccc"]
+#     targets = ["aaa"]
+#
+#     scores = em_group_ans(ans_group, targets)
+#     print(scores)
 
-    # x = test
-    # below_k = (x < k)
-    # # number of passages required to obtain all passages from gold top-k
-    # idx_gold_topk = len(x) - np.argmax(below_k[::-1])
+# x = test
+# below_k = (x < k)
+# # number of passages required to obtain all passages from gold top-k
+# idx_gold_topk = len(x) - np.argmax(below_k[::-1])

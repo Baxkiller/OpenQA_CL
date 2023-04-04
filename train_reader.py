@@ -113,10 +113,11 @@ def evaluate_metric(model, eval_dataloader, tokenizer, opts, get_answer):
                 each_question.append(prediction)
                 if (map_index + 1) % n_candidate == 0:
                     target_ans = get_answer(index = index[map_index // n_candidate])
-                    match_score = evaluate_metrics.evaluate_group_ans(ans_group = each_question, targets = target_ans)
+                    match_score = evaluate_metrics.em_group_ans(ans_group = each_question, targets = target_ans)
                     each_question = []
-                    # 之前使用append(match_score=sum,现在使用avg)
-                    all_match_score.append(match_score / n_candidate)
+                    # 之前使用append(match_score=sum,现在使用avg)，但根本性质没有改变
+                    # 使用min，保证有答案即为1，无答案即为0
+                    all_match_score.append(min(match_score, 1))
 
     avg_match_score = Utils.avg_value(all_match_score)
     return avg_match_score
@@ -182,7 +183,6 @@ if __name__ == '__main__':
             logger.info(f"Downloading model {opts.model_name} " + ("successfully!" if load_success else "failed!"))
             # 如果失败，退出程序
             assert load_success
-            model_path_exists = load_success
             model_path_exists = load_success
         else:
             logger.info(f"model path {model_path} not exists!")
