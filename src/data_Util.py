@@ -90,7 +90,7 @@ class R_Collator():
 
     def __init__(self, tokenizer, question_maxlength, context_maxlength):
         self.tokenizer = tokenizer
-        self.question_max_length = question_maxlength
+        self.question_maxlength = question_maxlength
         self.context_maxlength = context_maxlength
 
     def __call__(self, examples):
@@ -101,11 +101,11 @@ class R_Collator():
         passages_ids = None
         passages_mask = None
 
-        if examples[0]['score'] is not None:
+        if examples[0]['scores'] is not None:
             # 每一个score都应该是n_context长度的数组
-            scores = [example['score'] for example in examples]
+            scores = [example['scores'] for example in examples]
             # 将多个一维tensor合并为二维tensor
-            scores = torch.stack()
+            scores = torch.stack(scores, dim = 0)
 
         if examples[0]['passages'] is not None:
             passages = [example['passages'] for example in examples]
@@ -115,7 +115,7 @@ class R_Collator():
         question_token = self.tokenizer.batch_encode_plus(
             questions,
             pad_to_max_length = True,
-            max_length = self.question_max_length,
+            max_length = self.question_maxlength,
             truncation = True,
             return_tensors = 'pt'
         )
@@ -149,6 +149,12 @@ def load_data(data_path: pathlib.Path):
             score = 1.0 / (1 + i)
             for context in example['ctxs']:
                 context['score'] = score
+        else:
+            initial_score = 1.0 / (1 + i)
+            epsilon = 0.01
+            for context in example['ctxs']:
+                if float(context['score']) - initial_score < epsilon:
+                    context['score'] = -100
         examples.append(example)
 
     if data_path.suffix == ".jsonl":

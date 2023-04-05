@@ -19,20 +19,15 @@ from torch.utils.data import DataLoader
 from src import Utils, data_Util, evaluate_metrics
 
 
-def evaluate_metric(model, dataloaders, tokenizer, opts, get_answer, save_path):
+def evaluate_metric(model, dataloaders, tokenizer, opts, datasets, save_path):
     """评估模型此时在dev数据集上的分数"""
     model.eval()
-
-    if hasattr(model, "module"):
-        logger.info("model has module...")
-        model = model.module
 
     n_candidate = opts.n_beam
     keys = ["train", "eval"]
     for key in keys:
         logger.info(f"Generating {key} Datasets")
         with torch.no_grad():
-            all_candidates = []
             for i, batch in enumerate(dataloaders[key]):
                 (index, _, _, context_ids, context_mask) = batch
 
@@ -54,20 +49,17 @@ def evaluate_metric(model, dataloaders, tokenizer, opts, get_answer, save_path):
                     prediction = tokenizer.decode(prediction_undecode, skip_special_tokens = True)
                     each_question.append(prediction)
                     if (map_index + 1) % n_candidate == 0:
-                        question, target_ans = get_answer[key](index = index[map_index // n_candidate])
-                        scores = [int(evaluate_metrics.evaluate_single_ans(ans, targets = target_ans)) for ans in
-                                  each_question]
-                        all_candidates.append({
-                            "index": index[map_index // n_candidate].item(),
-                            "question": question,
-                            "candidates": each_question,
-                            "targets": target_ans,
-                            "em_scores": scores
-                        })
+                        example = datasets[key].examples[index[map_index // n_candidate]]
+                        question, target_ans = example["question"], example["answers"]
+                        em_scores = evaluate_metrics.em_group_ans(each_question, target_ans)
+                        rouge_scores = evaluate_metrics.rouge_group_ans(each_question, target_ans)
+                        example["em_scores"] = em_scores
+                        example["candidates"] = each_question
+                        example["rouge_scores"] = rouge_scores
                         each_question = []
 
             with open(save_path / f"{key}.json", "w") as f:
-                json.dump(all_candidates, f)
+                json.dump(datasets[key].examples, f)
             logger.info(f"Generating of {key} finished")
 
 
@@ -156,6 +148,6 @@ if __name__ == '__main__':
         dataloaders = dataloader,
         tokenizer = tokenizer,
         opts = opts,
-        get_answer = get_answer,
+        datasets = datasets,
         save_path = output_path
     )

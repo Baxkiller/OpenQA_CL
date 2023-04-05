@@ -7,8 +7,10 @@
 import regex
 import string
 import evaluate
+from rouge_score import rouge_scorer
 import numpy as np
 
+scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer = True)
 
 def normalize_answer(s):
     """
@@ -57,26 +59,57 @@ def evaluate_single_ans(ans, targets):
     return value
 
 
+def rouge_single_ans(ans, targets, weight = 0.5):
+
+    score = 0
+    for target in targets:
+        output = scorer.score(normalize_answer(ans), normalize_answer(target))
+        temp_score = (weight * output['rouge1'].fmeasure + (1 - weight) * output['rougeL'].fmeasure)
+        score = max(score, temp_score)
+    return score
+
+
 ##########################答案评估方法############################
 # 使用em分数来评估生成的一组答案的质量
-def em_group_ans(ans_group: list, targets: list):
+
+def get_evaluate_metrics(name: str):
+    evaluate_dict = {
+        "em": em_group_ans,
+        "bleu": bleu_group_ans,
+        "glue": glue_group_ans,
+        "meteor": meteor_group_ans,
+        "rouge": rouge_group_ans,
+    }
+    assert name in evaluate_dict
+    return evaluate_dict.get(name)
+
+
+def em_group_ans(ans_group: list, targets: list, **kwargs):
     """
     ans_group:模型生成的一组答案
     targets: 监督数据给出的一组标准答案
     返回这组答案的平均分数
     """
-    return [evaluate_single_ans(ans, targets) for ans in ans_group]
+    return [int(evaluate_single_ans(ans, targets)) for ans in ans_group]
 
 
-def glue_group_ans(ans_group: list, targets: list):
+def rouge_group_ans(ans_group: list, targets: list, **kwargs):
+    scores = []
+    weight = kwargs.get("weight", 0.5)
+    for ans in ans_group:
+        scores.append(rouge_single_ans(ans, targets, weight))
+    return scores
+
+
+def glue_group_ans(ans_group: list, targets: list, **kwargs):
     pass
 
 
-def bleu_group_ans(ans_group: list, targets: list):
+def bleu_group_ans(ans_group: list, targets: list, **kwargs):
     pass
 
 
-def meteor_group_ans(ans_group: list, targets: list):
+def meteor_group_ans(ans_group: list, targets: list, **kwargs):
     pass
 
 
@@ -128,7 +161,6 @@ def evaluate_passages_sort(scores: list, inverse_cnt: list, topk_true: dict, top
             lt_k = decrease_score_index < k
             # 找到最后一个为true的位置
             topk_last_idx[k].append(get_last_true_fast(lt_k))
-
 
 # if __name__ == '__main__':
 #     ans_group = ["aaa", "bbb", "ccc"]

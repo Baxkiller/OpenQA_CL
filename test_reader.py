@@ -9,10 +9,10 @@ import numpy as np
 import random
 import transformers
 import json
+import src.logger as log_src
 
 from pathlib import Path
 from src.options import Options
-from src.logger import init_logger
 from src.model import FiDCL, Reranker
 from src import data_Util, Utils
 from torch.utils.data import DataLoader
@@ -69,7 +69,8 @@ def evaluate(model, eval_dataloader, dataset, tokenizer, opts, reranker):
                     example = dataset.examples[example_index]
                     target_ans = example.get("answers", None)
 
-                    best_ans, score = reranker.rerank(candidates = each_question, targets = target_ans,n_candidates = n_candidate)
+                    best_ans, score = reranker.rerank(candidates = each_question, targets = target_ans,
+                                                      n_candidates = n_candidate)
                     each_question = []
                     all_match_score.append(score)
 
@@ -82,7 +83,7 @@ def evaluate(model, eval_dataloader, dataset, tokenizer, opts, reranker):
                     if opts.write_results:
                         fw.write(str(example['id']) + "\t" + best_ans + '\n')
 
-            if (i + 1) % opts.eval_print_freq == 0:
+            if (i + 1) % opts.eval_logger.info_freq == 0:
                 log = f'Processing: {i + 1} / {len(dataloader)}'
                 if len(all_match_score) == 0:
                     log += '| no answer to compute scores'
@@ -113,13 +114,13 @@ if __name__ == '__main__':
     model_path = Path(opts.model_path)
     model_path_exists = (model_path / "pytorch_model.bin").exists()
     output_path = Path(opts.output_path)
-    output_path_exists = output_path.exists()
     if opts.write_attention_scores:
         (output_path / "dataset_attention_score").mkdir(exist_ok = True, parents = True)
     if opts.write_results:
         (output_path / 'test_results').mkdir(exist_ok = True, parents = True)
 
-    logger = init_logger(checkpoint_path / 'run.log')
+    logger = log_src.init_logger(checkpoint_path / 'run.log')
+    logger.info("** Logger Upline! **")
 
     model_flag = opts.token_flag
     model_class = FiDCL
@@ -130,17 +131,20 @@ if __name__ == '__main__':
         answer_maxlength = opts.answer_maxlength)
 
     logger.info("** Generating DataLoader... **")
-    data_path = Path(opts.eval_data)
-    assert data_path.exists()
-    examples = data_Util.load_data(data_path)
-    dataset = data_Util.Dataset(examples, opts)
-    dataloader = DataLoader(
-        dataset,
-        batch_size = opts.batch_size,
-        shuffle = False,
-        num_workers = 10,
-        collate_fn = collator,
-    )
+    data_path = {"train": Path(opts.train_data), "eval": Path(opts.eval_data)}
+    assert data_path["train"].exists()
+    assert data_path["eval"].exists()
+    dataset, dataloader = {}, {}
+    for key in ["train", "eval"]:
+        examples = data_Util.load_data(data_path[key])
+        dataset[key] = data_Util.Dataset(examples, opts)
+        dataloader[key] = DataLoader(
+            dataset[key],
+            batch_size = opts.batch_size,
+            shuffle = False,
+            num_workers = 10,
+            collate_fn = collator,
+        )
 
     logger.info("** Loadding model and etc. **")
     assert model_path_exists
@@ -150,16 +154,21 @@ if __name__ == '__main__':
     reranker = Reranker(evaluate = opts.evaluate_type)
 
     logger.info("** Evaluate model and etc. **")
-    avg_match_score = evaluate(model, dataloader, dataset, tokenizer, opts, reranker)
+
+    avg_match_score_eval = evaluate(model, dataloader["eval"], dataset["eval"], tokenizer, opts, reranker)
+    avg_match_score_train = evaluate(model, dataloader["train"], dataset["train"], tokenizer, opts, reranker)
+    logger.info(
+        f'train: {opts.evaluate_type} {100 * avg_match_score_train:.3f}, Total number of example {len(dataset["eval"])}')
+    logger.info(
+        f'eval : {opts.evaluate_type} {100 * avg_match_score_eval:.3f}, Total number of example {len(dataset["train"])}')
     logger.info("** Evaluate Finished. **")
 
-    logger.info(f'{opts.evaluate_type} {100 * avg_match_score:.3f}, Total number of example {len(dataset)}')
-
     if opts.write_attention_scores:
-        to_write = dataset.examples
-        write_path = output_path / "dataset_attention_score"
-        write_file = write_path / "data_scored.json"
-        logger.info(f"Write data to {write_file.absolute()}")
-        with open(write_path / "data_scored.json", "w") as f:
-            json.dump(to_write, f)
-        logger.info("Write data Finished!")
+        for key in ["train", "eval"]:
+            to_write = dataset[key].examples
+            write_path = output_path / "dataset_attention_score"
+            write_file = write_path / f"{key}_data_scored.json"
+            logger.info(f"Write data to {write_file.absolute()}")
+            with open(write_file, "w") as f:
+                json.dump(to_write, f)
+            logger.info(f"Write data {key} Finished!")
