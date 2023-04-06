@@ -24,7 +24,7 @@ def evaluate_metric(model, dataloaders, tokenizer, opts, datasets, save_path):
     model.eval()
 
     n_candidate = opts.n_beam
-    keys = ["train", "eval"]
+    keys = ["eval", "train"]
     for key in keys:
         logger.info(f"Generating {key} Datasets")
         with torch.no_grad():
@@ -53,13 +53,21 @@ def evaluate_metric(model, dataloaders, tokenizer, opts, datasets, save_path):
                         question, target_ans = example["question"], example["answers"]
                         em_scores = evaluate_metrics.em_group_ans(each_question, target_ans)
                         rouge_scores = evaluate_metrics.rouge_group_ans(each_question, target_ans)
-                        example["em_scores"] = em_scores
                         example["candidates"] = each_question
+                        example["em_scores"] = em_scores
                         example["rouge_scores"] = rouge_scores
                         each_question = []
 
-            with open(save_path / f"{key}.json", "w") as f:
-                json.dump(datasets[key].examples, f)
+                        if i == 0:
+                            with open(save_path / f"{key}_test.json", "w") as f:
+                                json.dump(example, f, indent = 2)
+                            logger.info("example dump finished!")
+
+                if (i + 1) % opts.eval_freq == 0:
+                    logger.info(f"Current : {i + 1} / {len(datasets[key])}")
+
+            with open(save_path / f"{key}.json", "a") as f:
+                json.dump(datasets[key].examples, f, indent = 2)
             logger.info(f"Generating of {key} finished")
 
 

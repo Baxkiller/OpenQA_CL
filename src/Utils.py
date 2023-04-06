@@ -147,6 +147,39 @@ def load_model(load_path: str, model_class, opts, reset_params = False):
     return model, optimizer, scheduler, opt_checkpoint, step, best_eval_metric
 
 
+def load_reranker(model, load_path: pathlib.Path, opts, reset_params = False):
+    model_path = load_path / "model.pth"
+    optimizer_path = load_path / "optimizer.pth"
+
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    model.load_state_dict(torch.load(model_path, map_location = device))
+
+    if optimizer_path.exists():
+        checkpoint = torch.load(optimizer_path, map_location = device)
+        opt_checkpoint = checkpoint["opts"]
+        step = checkpoint["step"]
+        if "best_eval_metric" in checkpoint:
+            best_eval_metric = checkpoint["best_eval_metric"]
+        else:
+            best_eval_metric = checkpoint["best_match_score"]
+
+        if not reset_params:
+            optimizer, scheduler = get_init_optim(model, opt_checkpoint)
+            optimizer.load_state_dict(checkpoint["optimizer"])
+            scheduler.load_state_dict(checkpoint["scheduler"])
+        else:
+            optimizer, scheduler = get_init_optim(model, opts)
+
+    else:
+        step, best_eval_metric = 0, 0.0
+        opt_checkpoint = opts
+        optimizer, scheduler = get_init_optim(model, opts)
+
+    logger.info("Optimizer,Scheduler Finished!")
+    return model, optimizer, scheduler, opt_checkpoint, step, best_eval_metric
+
+
 def avg_value(values: list):
     return sum(values) / len(values)
 
@@ -175,6 +208,26 @@ def save_all(model, optimizer, scheduler, opts, cur_step, save_path: pathlib.Pat
 
     soft_link_file = save_path / "latest"
     make_soft_link(true_save_path, soft_link_file)
+
+
+def save_reranker(model, optimizer, scheduler, step, best_em, save_path: pathlib.Path, opts, sub_name):
+    true_path = save_path / sub_name
+    true_path.mkdir(exist_ok = True, parents = True)
+    model_path = true_path / "model.pth"
+    optimizer_path = true_path / "optimizer.pth"
+
+    torch.save(model.state_dict(), model_path)
+    checkpoint = {
+        "step": step,
+        "optimizer": optimizer.state_dict(),
+        "scheduler": scheduler.state_dict(),
+        "opts": opts,
+        "best_match_score": best_em,
+    }
+    torch.save(checkpoint, optimizer_path)
+
+    soft_link_file = save_path / "latest"
+    make_soft_link(true_path, soft_link_file)
 
 
 def make_soft_link(true_file, soft_link_file):

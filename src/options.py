@@ -17,6 +17,10 @@ class Options(object):
         self.parser.add_argument("--title_prefix", type = str, default = "title:")
         self.parser.add_argument("--context_prefix", type = str, default = "context:")
         self.parser.add_argument("--output_path", type = str, default = "scored_candidates")
+        self.parser.add_argument("--train_data", required = True, type = str)
+        self.parser.add_argument("--eval_data", type = str, default = 'none')
+        self.parser.add_argument("--eval_freq", type = int, default = 500)
+        self.parser.add_argument("--save_freq", type = int, default = 5000)
 
     def add_initial(self):
         self.parser.add_argument("--name", type = str, default = "my_experiment")
@@ -41,16 +45,12 @@ class Options(object):
     def add_train_reader(self):
         self.add_data_process()
         self.add_candidates()
-        self.parser.add_argument("--train_data", required = True, type = str)
-        self.parser.add_argument("--eval_data", type = str, default = 'none')
         self.parser.add_argument('--total_steps', type = int, default = 1000)
         self.parser.add_argument("--n_context", type = int, default = 1)
         self.parser.add_argument("--text_maxlength", type = int, default = 200,
                                  help = "包含提示语的上下文最大长度")
         self.parser.add_argument("--answer_maxlength", type = int, default = 40,
                                  help = "生成答案的最大长度")
-        self.parser.add_argument("--eval_freq", type = int, default = 500)
-        self.parser.add_argument("--save_freq", type = int, default = 5000)
 
     def add_optim(self):
         self.parser.add_argument('--warmup_steps', type = int, default = 1000)
@@ -72,16 +72,20 @@ class Options(object):
         self.parser.add_argument("--context_maxlegnth", type = int, default = 200)
         self.parser.add_argument("--total_steps", type = int, default = 10000)
         self.parser.add_argument("--n_context", type = int, default = 1)
-        self.parser.add_argument("--train_data", required = True, type = str, default = 'none')
-        self.parser.add_argument("--eval_data", type = str, default = 'none')
-        self.parser.add_argument("--eval_freq", type = int, default = 500)
-        self.parser.add_argument("--save_freq", type = int, default = 5000)
 
     def add_reranker(self):
         self.parser.add_argument("--reranker_model_path", type = str, default = "None")
         self.parser.add_argument("--encoder_flag", type = str, default = "roberta-base")
         self.parser.add_argument("--evaluate_type", type = str, default = "em")
         self.parser.add_argument("--eval_print_freq", type = int, default = 500)
+        self.parser.add_argument("--n_context", type = int, default = 5)
+        self.parser.add_argument("--n_candidates", type = int, default = 6)
+        self.parser.add_argument("--text_maxlength", type = int, default = 100)
+        self.parser.add_argument("--answer_maxlength", type = int, default = 40)
+        self.parser.add_argument("--total_steps", type = int, default = 10000)
+        self.parser.add_argument("--margin", type = float, default = 0.01)
+        self.parser.add_argument("--gold_margin", type = float, default = 0.0)
+        self.parser.add_argument("--gold_weight", type = float, default = 1.0)
 
     def add_generate_passage_scores(self):
         self.parser.add_argument('--write_results', action = 'store_true')

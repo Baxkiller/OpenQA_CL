@@ -42,9 +42,6 @@ class FiDCL(FiD.FiDT5):
             **kwargs
         )
 
-    def loss_em(self, input_ids, attention_mask, **kwargs):
-        pass
-
     # 使用原fid中使用的loss函数
     def loss_fid(self, input_ids, attention_mask, **kwargs):
         return super(FiDCL, self).forward(
@@ -58,43 +55,153 @@ class FiDCL(FiD.FiDT5):
 
 
 class Reranker(nn.Module):
-    def __init__(self, encoder_flag = None, pad_token_id = None, evaluate = "em"):
+    def __init__(self, encoder_flag = None, evaluate = "em", **kwargs):
+        super(Reranker, self).__init__()
+        self.encoder = RobertaModel.from_pretrained(encoder_flag) if encoder_flag is not None else None
+        self.collator = kwargs.get("collator", None)
         evaluate_dict = {
             "em": evaluate_metrics.em_group_ans,
             "bleu": evaluate_metrics.bleu_group_ans,
             "glue": evaluate_metrics.glue_group_ans,
             "meteor": evaluate_metrics.meteor_group_ans,
+            "rouge": evaluate_metrics.rouge_group_ans,
         }
         assert evaluate in evaluate_dict
         self.evaluate_metric = evaluate_dict[evaluate]
 
-    # super(Reranker, self).__init__()
-    # self.encoder = RobertaModel.from_pretrained(encoder_flag)
-    # self.pad_token_id = pad_token_id
-
-    def forward(self, candidates_ids, target_ids, question_ids, gold_scores):
+    def forward(self, candidates: tuple, answers: tuple, passages: tuple, **kwargs):
         """训练排序器"""
-        pass
+        assert self.encoder is not None
+        bsz = candidates[0].size(0)
+        n_candidates = candidates[0].size(1)
 
-    def generate(self, question_ids):
-        """使用训练好的排序器，对当前传入的candidate产生评分"""
-        pass
+        # 不同example 的candidates合并
+        candidates_id = candidates[0].view(-1, candidates[0].size(-1))
+        candidates_mask = candidates[1].view(-1, candidates[1].size(-1))
+        can_out = self.encoder(
+            input_ids = candidates_id,
+            attention_mask = candidates_mask
+        )[0]
+        candidates_emb = can_out[:, 0, :].view(bsz, n_candidates, -1)
 
-    def rerank(self, n_candidates, candidates, targets = None):
+        ans_out = self.encoder(
+            input_ids = answers[0].view(bsz, -1),
+            attention_mask = answers[1].view(bsz, -1)
+        )[0]
+        answers_emb = (ans_out[:, 0, :])
+
+        passages_out = self.encoder(
+            input_ids = passages[0].view(bsz, -1),
+            attention_mask = passages[1].view(bsz, -1),
+        )[0]
+        passages_emb = passages_out[:, 0, :]
+
+        #       gold_scores=[]
+        #       for ans_,passages_ in zip(answers_emb,passages_emb):
+        #           # 处理batch中每个样本的参考答案与对应passages的相似度
+        #           doc_emb = passages_.unsqueeze(0).expand_as(ans_)
+        #           score=torch.cosine_similarity(doc_emb,ans_,dim=-1)
+        #           # 如果每个样本中含有两个参考答案，那么score形状为[2]
+        #           gold_scores.append(score)
+        gold_scores = torch.cosine_similarity(passages_emb, answers_emb, dim = -1)
+
+        passages_emb = passages_emb.unsqueeze(1).expand_as(candidates_emb)
+        can_scores = torch.cosine_similarity(passages_emb, candidates_emb, dim = -1)
+
+        return self.RankingLoss(can_scores, gold_scores, **kwargs)
+
+    def generate(self, candidates_: tuple, passages_: tuple):
         """
-        对传入的candidates进行排序，
-        返回最高分答案与对应分数
+        使用训练好的排序器，对当前传入的candidates产生评分
+        传入的candidates接受多个example,[example[can1,can2],exp2[can1,can2]]
+        """
+        assert self.encoder is not None
+        if candidates_[0].dim() == 2:
+            candidates = (candidates_[0][None, :], candidates_[1][None, :])
+        else:
+            candidates = candidates_
+        if passages_[0].dim() == 2:
+            passages = (passages_[0][None, :], passages_[1][None, :])
+        else:
+            passages = passages_
+
+        # 不同example 的candidates合并
+        bsz = candidates[0].size(0)
+        n_candidates = candidates[0].size(1)
+
+        candidates_id = candidates[0].view(-1, candidates[0].size(-1))
+        candidates_mask = candidates[1].view(-1, candidates[1].size(-1))
+        can_out = self.encoder(
+            input_ids = candidates_id,
+            attention_mask = candidates_mask,
+        )[0]
+        candidates_emb = can_out[:, 0, :].view(bsz, n_candidates, -1)
+
+        passages_out = self.encoder(
+            input_ids = passages[0].view(bsz, -1),
+            attention_mask = passages[1].view(bsz, -1),
+        )[0]
+        passages_emb = passages_out[:, 0, :]
+
+        passages_emb = passages_emb.unsqueeze(1).expand_as(candidates_emb)
+        can_scores = torch.cosine_similarity(passages_emb, candidates_emb, dim = -1)
+
+        return can_scores
+
+    # 直接传入example:{index,}
+    def rerank(self, candidates, targets = None, example = None):
+        """
+        对传入的candidates进行排序，candidates:["abc","...","..."]
+        之所以使用string，是因为T5的tokenizer与roberta的tokenizer不同
+        对应example用于使用collator将传入example编码
         """
         # 有标准答案时，按照既定规则进行评估
+
         if targets is not None:
+            match_score = []
             # 这个分数应该是
             match_score = self.evaluate_metric(ans_group = candidates, targets = targets)
+        elif example is not None:
+            candidates_, passages_ = self.collator([example])
+            match_score = self.generate(candidates_, passages_)
+            match_score = match_score[0].numpy()
         else:
-            match_score = self.generate(candidates)
+            match_score = [0]
 
         sort_idx = np.argsort(match_score)
         best_index = sort_idx[-1]
-        return candidates[best_index], int(match_score[best_index])
+        return candidates[best_index], float(match_score[best_index])
+
+    def RankingLoss(self, score, gold_scores = None, **kwargs, ):
+        margin = kwargs.get("margin", 0.01)
+        gold_margin = kwargs.get("gold_margin", 0)
+        gold_weight = kwargs.get("gold_weight", 1)
+
+        ones = torch.ones_like(score)
+        loss_func = torch.nn.MarginRankingLoss(0.0)
+        TotalLoss = loss_func(score, score, ones)
+        # candidate loss
+        n = score.size(1)
+
+        for i in range(1, n):
+            pos_score = score[:, :-i]
+            neg_score = score[:, i:]
+            pos_score = pos_score.contiguous().view(-1)
+            neg_score = neg_score.contiguous().view(-1)
+            ones = torch.ones_like(pos_score)
+            loss_func = torch.nn.MarginRankingLoss(margin * i)
+            loss = loss_func(pos_score, neg_score, ones)
+            TotalLoss += loss
+
+        # gold summary loss
+        pos_score = gold_scores.unsqueeze(-1).expand_as(score)
+        neg_score = score
+        pos_score = pos_score.contiguous().view(-1)
+        neg_score = neg_score.contiguous().view(-1)
+        ones = torch.ones_like(pos_score)
+        loss_func = torch.nn.MarginRankingLoss(gold_margin)
+        TotalLoss += gold_weight * loss_func(pos_score, neg_score, ones)
+        return TotalLoss
 
 
 class Retriever(PreTrainedModel):

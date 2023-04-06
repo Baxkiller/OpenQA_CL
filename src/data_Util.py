@@ -8,8 +8,10 @@ import pathlib
 import json
 import random
 import torch
+import numpy as np
 import torch.utils.data as torch_data
 from transformers import T5Tokenizer
+from src import evaluate_metrics
 
 
 def concat_question_contexts(example):
@@ -18,7 +20,7 @@ def concat_question_contexts(example):
     return [example["question"] + " " + t for t in example["passages"]]
 
 
-def encode_q_contexts(batch, tokenizer: T5Tokenizer, max_length):
+def encode_batch_list(batch, tokenizer, max_length):
     ids, mask = [], []
     for k, example in enumerate(batch):
         out = tokenizer.batch_encode_plus(
@@ -72,7 +74,7 @@ class Collator():
         target_mask = target_tok["attention_mask"].bool()
         target_ids = target_ids.masked_fill(~target_mask, -100)
 
-        ques_context_ids, ques_context_mask = encode_q_contexts(
+        ques_context_ids, ques_context_mask = encode_batch_list(
             batch = ques_context,
             tokenizer = self.tokenizer,
             max_length = self.context_maxlength
@@ -110,7 +112,7 @@ class R_Collator():
         if examples[0]['passages'] is not None:
             passages = [example['passages'] for example in examples]
             passages_id, passages_mask = \
-                encode_q_contexts(passages, tokenizer = self.tokenizer, max_length = self.context_maxlength)
+                encode_batch_list(passages, tokenizer = self.tokenizer, max_length = self.context_maxlength)
 
         question_token = self.tokenizer.batch_encode_plus(
             questions,
@@ -150,11 +152,9 @@ def load_data(data_path: pathlib.Path):
             for context in example['ctxs']:
                 context['score'] = score
         else:
-            initial_score = 1.0 / (1 + i)
-            epsilon = 0.01
             for context in example['ctxs']:
-                if float(context['score']) - initial_score < epsilon:
-                    context['score'] = -100
+                context['score'] += 10 if context['score'] < 0 else 0
+
         examples.append(example)
 
     if data_path.suffix == ".jsonl":
@@ -204,3 +204,131 @@ class Dataset(torch_data.Dataset):
 
     def get_example(self, index):
         return self.examples[index]
+
+
+class CL_Dataset(torch_data.Dataset):
+    def __init__(self, examples: list, opts):
+        self.examples = examples
+        self.example_n_candidates = len(self.examples[0]['candidates'])
+        self.data_config = {
+            "n_context": opts.n_context,
+            "n_candidates": min(opts.n_candidates, self.example_n_candidates),  # 代表每个问题要保留的答案数
+            "question_prefix": opts.question_prefix,
+            "title_prefix": opts.title_prefix,
+            "context_prefix": opts.context_prefix,
+            "standard_metric": opts.evaluate_type,
+        }
+
+        if 'socre' in examples[0]['ctxs'][0]:
+            for example in self.examples:
+                example['ctxs'].sort(key = lambda x: float(x['score']), reverse = True)
+
+    def __len__(self):
+        return len(self.examples)
+
+    def __getitem__(self, index):
+        example = self.examples[index]
+        question = self.data_config['question_prefix'] + " " + example['question']
+
+        candidates = example['candidates']
+        answers = example['answers'][0]
+
+        if self.data_config["standard_metric"] == "rouge":
+            scores = example["rouge_scores"]
+        elif self.data_config["standard_metric"] == "em":
+            scores = example["em_scores"]
+        else:
+            assert False
+
+        _, unique_indices = np.unique([evaluate_metrics.normalize_answer(c) for c in candidates], return_index = True)
+        candidates = np.array(candidates)[unique_indices]
+        scores = np.array(scores)[unique_indices]
+        indices = np.argsort(scores)[::-1]
+        candidates = np.array(candidates)[indices]
+        scores = scores[indices]
+
+        if len(scores) > self.data_config["n_candidates"]:
+            candidates = candidates[:self.data_config["n_candidates"]]
+            scores = scores[:self.data_config["n_candidates"]]
+        else:
+            to_append = self.data_config["n_candidates"] - len(scores)
+            for i in range(to_append):
+                candidates = np.append(candidates, "")
+                scores = np.append(scores, 0.0)
+
+        single_context_format = self.data_config["title_prefix"] + " {} " + \
+                                self.data_config["context_prefix"] + " {}"
+
+        contexts = example['ctxs'][:self.data_config["n_context"]]
+        passages = [single_context_format.format(c['title'], c['text']) for c in contexts]
+
+        return {
+            "index": index,
+            "question": question,
+            "candidates": candidates,
+            "answers": answers,
+            "scores": scores,
+            "passages": passages
+        }
+
+
+class CL_Collator():
+    def __init__(self, tokenizer, answer_maxlength, passage_maxlength):
+        self.tokenizer = tokenizer
+        self.answer_maxlength = answer_maxlength
+        self.passage_maxlength = passage_maxlength
+
+    def __call__(self, batch):
+        index = [example["index"] for example in batch]
+        candidates = [example["candidates"] for example in batch]
+        # qeustion passages
+        ques_context = [concat_question_contexts(example) for example in batch]
+        answers = [example["answers"] for example in batch]
+
+        candidates_ids, candidates_mask = encode_batch_list(
+            batch = candidates,
+            tokenizer = self.tokenizer,
+            max_length = self.answer_maxlength
+        )
+
+        ques_context_ids, ques_context_mask = encode_batch_list(
+            batch = ques_context,
+            tokenizer = self.tokenizer,
+            max_length = self.passage_maxlength
+        )
+
+        tok = tokenizer(
+            text = answers,
+            max_length = self.answer_maxlength,
+            padding = "max_length",
+            return_tensors = 'pt'
+        )
+        answers_ids, answers_mask = tok['input_ids'], tok['attention_mask']
+
+        return (index, candidates_ids, candidates_mask, ques_context_ids, ques_context_mask, answers_ids, answers_mask)
+
+
+class Single_Collator():
+    def __init__(self, tokenizer, answer_maxlength, passage_maxlength):
+        self.tokenizer = tokenizer
+        self.answer_maxlength = answer_maxlength
+        self.passage_maxlength = passage_maxlength
+
+    def __call__(self, batch):
+        candidates = [example["candidates"] for example in batch]
+        # qeustion passages
+        ques_context = [concat_question_contexts(example) for example in batch]
+
+        candidates_ids, candidates_mask = encode_batch_list(
+            batch = candidates,
+            tokenizer = self.tokenizer,
+            max_length = self.answer_maxlength
+        )
+
+        ques_context_ids, ques_context_mask = encode_batch_list(
+            batch = ques_context,
+            tokenizer = self.tokenizer,
+            max_length = self.passage_maxlength
+        )
+
+        return (candidates_ids, candidates_mask), (ques_context_ids, ques_context_mask)
