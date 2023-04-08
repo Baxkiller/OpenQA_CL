@@ -110,20 +110,20 @@ class Reranker(nn.Module):
 
         return self.RankingLoss(can_scores, gold_scores, **kwargs)
 
-    def generate(self, candidates_: tuple, passages_: tuple):
+    def generate(self, candidates: tuple, passages: tuple):
         """
         使用训练好的排序器，对当前传入的candidates产生评分
         传入的candidates接受多个example,[example[can1,can2],exp2[can1,can2]]
         """
-        assert self.encoder is not None
-        if candidates_[0].dim() == 2:
-            candidates = (candidates_[0][None, :], candidates_[1][None, :])
-        else:
-            candidates = candidates_
-        if passages_[0].dim() == 2:
-            passages = (passages_[0][None, :], passages_[1][None, :])
-        else:
-            passages = passages_
+        # assert self.encoder is not None
+        # if candidates_[0].dim() == 2:
+        #     candidates = (candidates_[0][None, :], candidates_[1][None, :])
+        # else:
+        #     candidates = candidates_
+        # if passages_[0].dim() == 2:
+        #     passages = (passages_[0][None, :], passages_[1][None, :])
+        # else:
+        #     passages = passages_
 
         # 不同example 的candidates合并
         bsz = candidates[0].size(0)
@@ -162,15 +162,16 @@ class Reranker(nn.Module):
             # 这个分数应该是
             match_score = self.evaluate_metric(ans_group = candidates, targets = targets)
         elif example is not None:
-            candidates_, passages_ = self.collator([example])
+            a, b = self.collator([example])
+            candidates_ = (a[0].cuda(), a[1].cuda())
+            passages_ = (b[0].cuda(), b[1].cuda())
             match_score = self.generate(candidates_, passages_)
-            match_score = match_score[0].numpy()
+            match_score = match_score[0]
         else:
             match_score = [0]
 
-        sort_idx = np.argsort(match_score)
-        best_index = sort_idx[-1]
-        return candidates[best_index], float(match_score[best_index])
+        sort_idx = torch.argmax(match_score)
+        return candidates[sort_idx.item()], float(match_score[sort_idx.item()])
 
     def RankingLoss(self, score, gold_scores = None, **kwargs, ):
         margin = kwargs.get("margin", 0.01)

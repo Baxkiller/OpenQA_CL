@@ -30,9 +30,9 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
 
             (indexs, candidates_ids, candidates_mask, passage_ids, passage_mask, answers_ids, answers_mask) = batch
             loss = model(
-                (candidates_ids, candidates_mask),
-                (answers_ids, answers_mask),
-                (passage_ids, passage_mask),
+                (candidates_ids.cuda(), candidates_mask.cuda()),
+                (answers_ids.cuda(), answers_mask.cuda()),
+                (passage_ids.cuda(), passage_mask.cuda()),
                 margin = opts.margin,
                 gold_margin = opts.gold_margin,
                 gold_weight = opts.gold_weight
@@ -48,7 +48,7 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
 
             if cur_step % opts.eval_freq == 0:
                 logger.info("** Evaluate Model! **")
-                em_score = evaluate(model, datasets["eval"])
+                em_score = evaluate(model, datasets["eval"], opts)
                 model.train()
 
                 if em_score > best_val:
@@ -70,14 +70,27 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
                 break
 
 
-def evaluate(model, dataset):
+def evaluate(model, dataset, opts, ):
+    collator = model.collator
+    dataloader = DataLoader(
+        dataset,
+        shuffle = False,
+        batch_size = 1,
+        num_workers = 10,
+        collate_fn = collator
+    )
+
     model.eval()
     em = []
     with torch.no_grad():
-        for i in range(len(dataset)):
-            example = dataset.examples[i]
+        for i, batch in enumerate(dataloader):
+            (candidates_ids, candidates_mask), (passages_ids, passages_mask) = batch
+            example = dataset[i]
             answers = example["answers"]
-            best_ans, score = model.rerank(candidates = example["candidates"], example = example)
+            scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
+                                    (passages_ids.cuda(), passages_mask.cuda()))
+            index = torch.argmax(scores[0])
+            best_ans=example["candidates"][index.item()]
             em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
 
     avg_em = Utils.avg_value(em)
@@ -137,6 +150,7 @@ if __name__ == '__main__':
 
     if not model_path_exists:
         model = Reranker(opts.encoder_flag, evaluate = opts.evaluate_type, collator = single_collator)
+        model = model.cuda()
         optimizer, scheduler = Utils.get_init_optim(model, opts)
         opt_checkpoint = opts
         step = 0

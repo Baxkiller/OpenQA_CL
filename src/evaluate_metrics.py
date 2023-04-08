@@ -7,6 +7,7 @@
 import regex
 import string
 import evaluate
+import torch
 from rouge_score import rouge_scorer
 import numpy as np
 
@@ -98,7 +99,7 @@ def rouge_group_ans(ans_group: list, targets: list, **kwargs):
     weight = kwargs.get("weight", 0.5)
     for ans in ans_group:
         scores.append(rouge_single_ans(ans, targets, weight))
-    return scores
+    return torch.tensor(scores)
 
 
 def glue_group_ans(ans_group: list, targets: list, **kwargs):

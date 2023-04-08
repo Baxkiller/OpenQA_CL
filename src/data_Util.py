@@ -297,7 +297,7 @@ class CL_Collator():
             max_length = self.passage_maxlength
         )
 
-        tok = tokenizer(
+        tok = self.tokenizer(
             text = answers,
             max_length = self.answer_maxlength,
             padding = "max_length",
