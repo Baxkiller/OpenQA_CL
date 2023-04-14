@@ -16,6 +16,8 @@ class Options(object):
         self.parser.add_argument("--question_prefix", type = str, default = "question:")
         self.parser.add_argument("--title_prefix", type = str, default = "title:")
         self.parser.add_argument("--context_prefix", type = str, default = "context:")
+        self.parser.add_argument("--answer_prefix", type = str, default = "answer:")
+
         self.parser.add_argument("--output_path", type = str, default = "scored_candidates")
         self.parser.add_argument("--train_data", required = True, type = str)
         self.parser.add_argument("--eval_data", type = str, default = 'none')
@@ -80,12 +82,13 @@ class Options(object):
         self.parser.add_argument("--eval_print_freq", type = int, default = 500)
         self.parser.add_argument("--n_context", type = int, default = 5)
         self.parser.add_argument("--n_candidates", type = int, default = 6)
-        self.parser.add_argument("--text_maxlength", type = int, default = 100)
+        self.parser.add_argument("--text_maxlength", type = int, default = 200)
         self.parser.add_argument("--answer_maxlength", type = int, default = 40)
         self.parser.add_argument("--total_steps", type = int, default = 10000)
         self.parser.add_argument("--margin", type = float, default = 0.01)
         self.parser.add_argument("--gold_margin", type = float, default = 0.0)
         self.parser.add_argument("--gold_weight", type = float, default = 1.0)
+        self.parser.add_argument("--no_gold", action = "store_true")
 
     def add_generate_passage_scores(self):
         self.parser.add_argument('--write_results', action = 'store_true')

@@ -5,7 +5,6 @@
 # @Software   : PyCharm
 # @Description: 训练排序器
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 import random
@@ -14,7 +13,37 @@ from src.options import Options
 from src.model import Reranker
 from src import Utils, data_Util, evaluate_metrics
 from pathlib import Path
-from transformers import RobertaModel, RobertaTokenizer
+from transformers import AutoTokenizer
+
+
+def RankingLoss(score, summary_score = None, margin = 0.01, gold_margin = 0, gold_weight = 1, no_gold = False,
+                no_cand = False):
+    ones = torch.ones_like(score)
+    loss_func = torch.nn.MarginRankingLoss(0.0)
+    TotalLoss = loss_func(score, score, ones)
+    # candidate loss
+    n = score.size(1)
+    if not no_cand:
+        for i in range(1, n):
+            pos_score = score[:, :-i]
+            neg_score = score[:, i:]
+            pos_score = pos_score.contiguous().view(-1)
+            neg_score = neg_score.contiguous().view(-1)
+            ones = torch.ones_like(pos_score)
+            loss_func = torch.nn.MarginRankingLoss(margin * i)
+            loss = loss_func(pos_score, neg_score, ones)
+            TotalLoss += loss
+    if no_gold:
+        return TotalLoss
+    # gold summary loss
+    pos_score = summary_score.unsqueeze(-1).expand_as(score)
+    neg_score = score
+    pos_score = pos_score.contiguous().view(-1)
+    neg_score = neg_score.contiguous().view(-1)
+    ones = torch.ones_like(pos_score)
+    loss_func = torch.nn.MarginRankingLoss(gold_margin)
+    TotalLoss += gold_weight * loss_func(pos_score, neg_score, ones)
+    return TotalLoss
 
 
 def train(model, optimizer, scheduler, start_step, datasets, collator, opts, best_val, save_path):
@@ -29,29 +58,29 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
             cur_step += 1
 
             (indexs, candidates_ids, candidates_mask, passage_ids, passage_mask, answers_ids, answers_mask) = batch
-            loss, cs, s = model(
+            can_scores, gold_scores = model(
                 (candidates_ids.cuda(), candidates_mask.cuda()),
                 (answers_ids.cuda(), answers_mask.cuda()),
                 (passage_ids.cuda(), passage_mask.cuda()),
-                margin = opts.margin,
-                gold_margin = opts.gold_margin,
-                gold_weight = opts.gold_weight
             )
 
+            loss = RankingLoss(can_scores, gold_scores, margin = opts.margin, gold_margin = opts.gold_margin,
+                               gold_weight = opts.gold_weight, no_gold = opts.no_gold)
+
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), opts.clip)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), opts.clip)
             optimizer.step()
             scheduler.step()
             model.zero_grad()
 
             loss_sum += loss
 
-            if cur_step % 5 == 0:
+            if cur_step % 50 == 0:
                 logger.info(f"Cur loss: {loss}")
 
             if cur_step % opts.eval_freq == 0 or cur_step == 1:
-                logger.info(f"Candidate_scores : {cs}"
-                            f"Gold_scores      : {s}")
+                logger.info(f"Candidate_scores : {can_scores}"
+                            f"Gold_scores      : {gold_scores}")
                 logger.info("** Evaluate Model! **")
                 em_score = evaluate(model, datasets["eval"], opts)
                 model.train()
@@ -91,12 +120,12 @@ def evaluate(model, dataset, opts, ):
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
             index, (candidates_ids, candidates_mask), (passages_ids, passages_mask) = batch
-            example = dataset[index[0]]
+            example = dataset.examples[index[0]]
             answers = example["answers"]
             scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
                                     (passages_ids.cuda(), passages_mask.cuda()))
-            index = torch.argmax(scores[0])
-            best_ans = example["candidates"][index.item()]
+            index_best = torch.argmax(scores[0])
+            best_ans = dataset.get_candidate(index[0])[index_best.item()]
             em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
 
     avg_em = Utils.avg_value(em)
@@ -125,7 +154,7 @@ if __name__ == '__main__':
 
     logger = src.logger.init_logger(checkpoint_path / 'run.log')
 
-    tokenizer = RobertaTokenizer.from_pretrained(opts.token_flag)
+    tokenizer = AutoTokenizer.from_pretrained(opts.encoder_flag)
     collator = data_Util.CL_Collator(
         tokenizer = tokenizer,
         answer_maxlength = opts.answer_maxlength,
@@ -146,7 +175,7 @@ if __name__ == '__main__':
     data_examples = {}
     datasets = {}
     for i, k in enumerate(data_name):
-        data_examples[k] = data_Util.load_data(data_paths[i])
+        data_examples[k] = data_Util.load_data_candidates(data_paths[i])
         if data_examples[k] is None:
             continue
         datasets[k] = data_Util.CL_Dataset(data_examples[k], opts)

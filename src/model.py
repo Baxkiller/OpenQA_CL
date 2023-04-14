@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from src import evaluate_metrics
 from torch import nn, einsum
-from transformers import RobertaModel, PreTrainedModel, BertModel
+from transformers import T5ForConditionalGeneration, PreTrainedModel, BertModel
 
 
 # 本模型中的loss，不是直接调用上层的forward函数得到的
@@ -57,7 +57,8 @@ class FiDCL(FiD.FiDT5):
 class Reranker(nn.Module):
     def __init__(self, encoder_flag = None, evaluate = "em", **kwargs):
         super(Reranker, self).__init__()
-        self.encoder = RobertaModel.from_pretrained(encoder_flag) if encoder_flag is not None else None
+        model = T5ForConditionalGeneration.from_pretrained(encoder_flag) if encoder_flag is not None else None
+        self.encoder = model.encoder
         self.collator = kwargs.get("collator", None)
         evaluate_dict = {
             "em": evaluate_metrics.em_group_ans,
@@ -101,7 +102,7 @@ class Reranker(nn.Module):
         passages_emb = passages_emb.unsqueeze(1).expand_as(candidates_emb)
         can_scores = torch.cosine_similarity(passages_emb, candidates_emb, dim = -1)
 
-        return self.RankingLoss(can_scores, gold_scores, **kwargs), can_scores, gold_scores
+        return can_scores, gold_scores
 
     def generate(self, candidates: tuple, passages: tuple):
         """
@@ -197,7 +198,7 @@ class Reranker(nn.Module):
         TotalLoss += gold_weight * loss_func(pos_score, neg_score, ones)
         return TotalLoss
 
-    def triplet_loss(self,anchor,positive,negetive):
+    def triplet_loss(self, anchor, positive, negetive):
         pass
 
 

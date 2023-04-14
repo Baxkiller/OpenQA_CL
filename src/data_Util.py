@@ -162,6 +162,28 @@ def load_data(data_path: pathlib.Path):
     return examples
 
 
+def load_data_candidates(data_path: pathlib.Path):
+    if not data_path.exists():
+        return None
+    with open(data_path, "r") as f:
+        data = json.load(f)
+
+    examples = []
+    for i, example in enumerate(data):
+        if 'score' not in example['ctxs'][0]:
+            score = 1.0 / (1 + i)
+            for context in example['ctxs']:
+                context['score'] = score
+        else:
+            for context in example['ctxs']:
+                context['score'] = float(context['score'])
+
+        if "em_scores" in example and sum(example["em_scores"]) != 0:
+            examples.append(example)
+
+    return examples
+
+
 class Dataset(torch_data.Dataset):
     def __init__(self, examples: list, opts):
         self.examples = examples
@@ -216,8 +238,18 @@ class CL_Dataset(torch_data.Dataset):
             "question_prefix": opts.question_prefix,
             "title_prefix": opts.title_prefix,
             "context_prefix": opts.context_prefix,
+            "answer_prefix": opts.answer_prefix,
             "standard_metric": opts.evaluate_type,
         }
+
+        if opts.evaluate_type == "rouge":
+            self.evaluate_metric = evaluate_metrics.rouge_group_ans
+        elif opts.evaluate_type == "em":
+            self.evaluate_metric = evaluate_metrics.em_group_ans
+        elif opts.evaluate_type == "meteor":
+            self.evaluate_metric = evaluate_metrics.meteor_group_ans
+        else:
+            assert False, "Evaluate type not support!"
 
         if 'socre' in examples[0]['ctxs'][0]:
             for example in self.examples:
@@ -226,6 +258,23 @@ class CL_Dataset(torch_data.Dataset):
     def __len__(self):
         return len(self.examples)
 
+    def get_candidate(self, index):
+        example = self.examples[index]
+
+        candidates = example['candidates']
+        answers = example["answers"][0]
+        for ans in example["answers"]:
+            if evaluate_metrics.evaluate_single_ans(ans, candidates) == 1.0:
+                answers = ans
+                break
+
+        scores = self.evaluate_metric(candidates, [answers])
+        scores = np.array(scores)
+        indices = np.argsort(scores)[::-1]
+        candidates = np.array(candidates)[indices]
+
+        return candidates
+
     def __getitem__(self, index):
         example = self.examples[index]
         question = self.data_config['question_prefix'] + " " + example['question']
@@ -233,31 +282,27 @@ class CL_Dataset(torch_data.Dataset):
         candidates = example['candidates']
         answers = example["answers"][0]
         for ans in example["answers"]:
-            if evaluate_metrics.rouge_single_ans(ans, candidates) == 1.0:
+            if evaluate_metrics.evaluate_single_ans(ans, candidates) == 1.0:
                 answers = ans
+                break
 
-        if self.data_config["standard_metric"] == "rouge":
-            scores = example["rouge_scores"]
-        elif self.data_config["standard_metric"] == "em":
-            scores = example["em_scores"]
-        else:
-            assert False
-
-        _, unique_indices = np.unique([evaluate_metrics.normalize_answer(c) for c in candidates], return_index = True)
-        candidates = np.array(candidates)[unique_indices]
-        scores = np.array(scores)[unique_indices]
+        scores = self.evaluate_metric(candidates, [answers])
+        scores = np.array(scores)
+        # _, unique_indices = np.unique([evaluate_metrics.normalize_answer(c) for c in candidates], return_index = True)
+        # candidates = np.array(candidates)[unique_indices]
+        # scores = np.array(scores)[unique_indices]
         indices = np.argsort(scores)[::-1]
         candidates = np.array(candidates)[indices]
         scores = scores[indices]
 
-        if len(scores) > self.data_config["n_candidates"]:
-            candidates = candidates[:self.data_config["n_candidates"]]
-            scores = scores[:self.data_config["n_candidates"]]
-        else:
-            to_append = self.data_config["n_candidates"] - len(scores)
-            for i in range(to_append):
-                candidates = np.append(candidates, "")
-                scores = np.append(scores, 0.0)
+        # if len(scores) > self.data_config["n_candidates"]:
+        #     candidates = candidates[:self.data_config["n_candidates"]]
+        #     scores = scores[:self.data_config["n_candidates"]]
+        # else:
+        #     to_append = self.data_config["n_candidates"] - len(scores)
+        #     for i in range(to_append):
+        #         candidates = np.append(candidates, "")
+        #         scores = np.append(scores, 0.0)
 
         single_context_format = self.data_config["title_prefix"] + " {} " + \
                                 self.data_config["context_prefix"] + " {}"
@@ -265,13 +310,18 @@ class CL_Dataset(torch_data.Dataset):
         contexts = example['ctxs'][:self.data_config["n_context"]]
         passages = [single_context_format.format(c['title'], c['text']) for c in contexts]
 
+        ques_ans_format = " {} " + self.data_config["answer_prefix"] + " {} "
+
+        ques_ans = [ques_ans_format.format(question, c) for c in candidates]
+        answers = ques_ans_format.format(question, answers)
+
         return {
             "index": index,
             "question": question,
-            "candidates": candidates,
             "answers": answers,
+            "candidates": ques_ans,
             "scores": scores,
-            "passages": passages
+            "passages": passages,
         }
 
 
@@ -281,41 +331,12 @@ class CL_Collator():
         self.answer_maxlength = answer_maxlength
         self.passage_maxlength = passage_maxlength
 
-    # def __call__(self, batch):
-    #     index = [example["index"] for example in batch]
-    #     candidates = [example["candidates"] for example in batch]
-    #     # qeustion passages
-    #     ques_context = [concat_question_contexts(example) for example in batch]
-    #     answers = [example["answers"] for example in batch]
-    #
-    #     candidates_ids, candidates_mask = encode_batch_list(
-    #         batch = candidates,
-    #         tokenizer = self.tokenizer,
-    #         max_length = self.answer_maxlength
-    #     )
-    #
-    #     ques_context_ids, ques_context_mask = encode_batch_list(
-    #         batch = ques_context,
-    #         tokenizer = self.tokenizer,
-    #         max_length = self.passage_maxlength
-    #     )
-    #
-    #     tok = self.tokenizer(
-    #         text = answers,
-    #         max_length = self.answer_maxlength,
-    #         padding = "max_length",
-    #         return_tensors = 'pt'
-    #     )
-    #     answers_ids, answers_mask = tok['input_ids'], tok['attention_mask']
-    #
-    #     return (index, candidates_ids, candidates_mask, ques_context_ids, ques_context_mask, answers_ids, answers_mask)
-
     def __call__(self, batch):
         index = [example["index"] for example in batch]
-        candidates = [concat_question_contexts(example, "candidates") for example in batch]
+        candidates = [example["candidates"] for example in batch]
         # qeustion passages
         ques_context = [concat_question_contexts(example) for example in batch]
-        answers = [example["question"] + " " + example["answers"] for example in batch]
+        answers = [example["answers"] for example in batch]
 
         candidates_ids, candidates_mask = encode_batch_list(
             batch = candidates,
@@ -348,8 +369,7 @@ class Single_Collator():
 
     def __call__(self, batch):
         index = [example["index"] for example in batch]
-        # candidates = [example["candidates"] for example in batch]
-        candidates = [concat_question_contexts(example, "candidates") for example in batch]
+        candidates = [example["candidates"] for example in batch]
         # qeustion passages
         ques_context = [concat_question_contexts(example) for example in batch]
 
