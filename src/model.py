@@ -88,7 +88,7 @@ class Reranker(nn.Module):
             input_ids = answers[0].view(bsz, -1),
             attention_mask = answers[1].view(bsz, -1)
         )[0]
-        answers_emb = (ans_out[:, 0, :])
+        answers_emb = ans_out[:, 0, :]
 
         passages_out = self.encoder(
             input_ids = passages[0].view(bsz, -1),
@@ -96,19 +96,12 @@ class Reranker(nn.Module):
         )[0]
         passages_emb = passages_out[:, 0, :]
 
-        #       gold_scores=[]
-        #       for ans_,passages_ in zip(answers_emb,passages_emb):
-        #           # 处理batch中每个样本的参考答案与对应passages的相似度
-        #           doc_emb = passages_.unsqueeze(0).expand_as(ans_)
-        #           score=torch.cosine_similarity(doc_emb,ans_,dim=-1)
-        #           # 如果每个样本中含有两个参考答案，那么score形状为[2]
-        #           gold_scores.append(score)
         gold_scores = torch.cosine_similarity(passages_emb, answers_emb, dim = -1)
 
         passages_emb = passages_emb.unsqueeze(1).expand_as(candidates_emb)
         can_scores = torch.cosine_similarity(passages_emb, candidates_emb, dim = -1)
 
-        return self.RankingLoss(can_scores, gold_scores, **kwargs)
+        return self.RankingLoss(can_scores, gold_scores, **kwargs), can_scores, gold_scores
 
     def generate(self, candidates: tuple, passages: tuple):
         """
@@ -203,6 +196,9 @@ class Reranker(nn.Module):
         loss_func = torch.nn.MarginRankingLoss(gold_margin)
         TotalLoss += gold_weight * loss_func(pos_score, neg_score, ones)
         return TotalLoss
+
+    def triplet_loss(self,anchor,positive,negetive):
+        pass
 
 
 class Retriever(PreTrainedModel):

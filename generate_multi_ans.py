@@ -53,9 +53,11 @@ def evaluate_metric(model, dataloaders, tokenizer, opts, datasets, save_path):
                         question, target_ans = example["question"], example["answers"]
                         em_scores = evaluate_metrics.em_group_ans(each_question, target_ans)
                         rouge_scores = evaluate_metrics.rouge_group_ans(each_question, target_ans)
+                        meteor_scores = evaluate_metrics.meteor_group_ans(each_question, target_ans)
                         example["candidates"] = each_question
-                        example["em_scores"] = em_scores
-                        example["rouge_scores"] = rouge_scores
+                        example["em_scores"] = em_scores.numpy().tolist()
+                        example["rouge_scores"] = rouge_scores.numpy().tolist()
+                        example["meteor_scores"] = meteor_scores.numpy().tolist()
                         each_question = []
 
                         if i == 0:

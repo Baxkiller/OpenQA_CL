@@ -14,10 +14,10 @@ from transformers import T5Tokenizer
 from src import evaluate_metrics
 
 
-def concat_question_contexts(example):
-    if example["passages"] is None:
+def concat_question_contexts(example, name = "passages"):
+    if example[name] is None:
         return example["question"]
-    return [example["question"] + " " + t for t in example["passages"]]
+    return [example["question"] + " " + t for t in example[name]]
 
 
 def encode_batch_list(batch, tokenizer, max_length):
@@ -153,7 +153,7 @@ def load_data(data_path: pathlib.Path):
                 context['score'] = score
         else:
             for context in example['ctxs']:
-                context['score'] += 10 if context['score'] < 0 else 0
+                context['score'] = float(context['score'])
 
         examples.append(example)
 
@@ -231,7 +231,10 @@ class CL_Dataset(torch_data.Dataset):
         question = self.data_config['question_prefix'] + " " + example['question']
 
         candidates = example['candidates']
-        answers = example['answers'][0]
+        answers = example["answers"][0]
+        for ans in example["answers"]:
+            if evaluate_metrics.rouge_single_ans(ans, candidates) == 1.0:
+                answers = ans
 
         if self.data_config["standard_metric"] == "rouge":
             scores = example["rouge_scores"]
@@ -278,12 +281,41 @@ class CL_Collator():
         self.answer_maxlength = answer_maxlength
         self.passage_maxlength = passage_maxlength
 
+    # def __call__(self, batch):
+    #     index = [example["index"] for example in batch]
+    #     candidates = [example["candidates"] for example in batch]
+    #     # qeustion passages
+    #     ques_context = [concat_question_contexts(example) for example in batch]
+    #     answers = [example["answers"] for example in batch]
+    #
+    #     candidates_ids, candidates_mask = encode_batch_list(
+    #         batch = candidates,
+    #         tokenizer = self.tokenizer,
+    #         max_length = self.answer_maxlength
+    #     )
+    #
+    #     ques_context_ids, ques_context_mask = encode_batch_list(
+    #         batch = ques_context,
+    #         tokenizer = self.tokenizer,
+    #         max_length = self.passage_maxlength
+    #     )
+    #
+    #     tok = self.tokenizer(
+    #         text = answers,
+    #         max_length = self.answer_maxlength,
+    #         padding = "max_length",
+    #         return_tensors = 'pt'
+    #     )
+    #     answers_ids, answers_mask = tok['input_ids'], tok['attention_mask']
+    #
+    #     return (index, candidates_ids, candidates_mask, ques_context_ids, ques_context_mask, answers_ids, answers_mask)
+
     def __call__(self, batch):
         index = [example["index"] for example in batch]
-        candidates = [example["candidates"] for example in batch]
+        candidates = [concat_question_contexts(example, "candidates") for example in batch]
         # qeustion passages
         ques_context = [concat_question_contexts(example) for example in batch]
-        answers = [example["answers"] for example in batch]
+        answers = [example["question"] + " " + example["answers"] for example in batch]
 
         candidates_ids, candidates_mask = encode_batch_list(
             batch = candidates,
@@ -315,7 +347,9 @@ class Single_Collator():
         self.passage_maxlength = passage_maxlength
 
     def __call__(self, batch):
-        candidates = [example["candidates"] for example in batch]
+        index = [example["index"] for example in batch]
+        # candidates = [example["candidates"] for example in batch]
+        candidates = [concat_question_contexts(example, "candidates") for example in batch]
         # qeustion passages
         ques_context = [concat_question_contexts(example) for example in batch]
 
@@ -331,4 +365,4 @@ class Single_Collator():
             max_length = self.passage_maxlength
         )
 
-        return (candidates_ids, candidates_mask), (ques_context_ids, ques_context_mask)
+        return index, (candidates_ids, candidates_mask), (ques_context_ids, ques_context_mask)

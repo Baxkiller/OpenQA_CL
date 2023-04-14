@@ -1,3 +1,4 @@
 .idea/
 test.py
 src/__pycache__/
+nltk/

@@ -10,8 +10,11 @@ import evaluate
 import torch
 from rouge_score import rouge_scorer
 import numpy as np
+from nltk.translate.meteor_score import meteor_score
+from nltk.tokenize import word_tokenize
 
 scorer = rouge_scorer.RougeScorer(['rouge1', 'rougeL'], use_stemmer = True)
+
 
 def normalize_answer(s):
     """
@@ -61,7 +64,6 @@ def evaluate_single_ans(ans, targets):
 
 
 def rouge_single_ans(ans, targets, weight = 0.5):
-
     score = 0
     for target in targets:
         output = scorer.score(normalize_answer(ans), normalize_answer(target))
@@ -91,7 +93,7 @@ def em_group_ans(ans_group: list, targets: list, **kwargs):
     targets: 监督数据给出的一组标准答案
     返回这组答案的平均分数
     """
-    return [int(evaluate_single_ans(ans, targets)) for ans in ans_group]
+    return torch.tensor([int(evaluate_single_ans(ans, targets)) for ans in ans_group])
 
 
 def rouge_group_ans(ans_group: list, targets: list, **kwargs):
@@ -111,7 +113,15 @@ def bleu_group_ans(ans_group: list, targets: list, **kwargs):
 
 
 def meteor_group_ans(ans_group: list, targets: list, **kwargs):
-    pass
+    refers = []
+    scores = []
+    for r in targets:
+        refer = word_tokenize(r)
+        refers.append(refer)
+    for i in ans_group:
+        tokenized = word_tokenize(i)
+        scores.append(meteor_score(refers, tokenized))
+    return torch.tensor(scores)
 
 
 ######################################################
