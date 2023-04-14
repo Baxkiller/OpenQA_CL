@@ -29,7 +29,7 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
             cur_step += 1
 
             (indexs, candidates_ids, candidates_mask, passage_ids, passage_mask, answers_ids, answers_mask) = batch
-            loss = model(
+            loss, cs, s = model(
                 (candidates_ids.cuda(), candidates_mask.cuda()),
                 (answers_ids.cuda(), answers_mask.cuda()),
                 (passage_ids.cuda(), passage_mask.cuda()),
@@ -39,14 +39,19 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
             )
 
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), opts.clip)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), opts.clip)
             optimizer.step()
             scheduler.step()
             model.zero_grad()
 
             loss_sum += loss
 
-            if cur_step % opts.eval_freq == 0:
+            if cur_step % 5 == 0:
+                logger.info(f"Cur loss: {loss}")
+
+            if cur_step % opts.eval_freq == 0 or cur_step == 1:
+                logger.info(f"Candidate_scores : {cs}"
+                            f"Gold_scores      : {s}")
                 logger.info("** Evaluate Model! **")
                 em_score = evaluate(model, datasets["eval"], opts)
                 model.train()
@@ -57,9 +62,10 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
                                         em_score, save_path, opts, "best_dev")
 
                 logger.info(f"Evaluate at:\t{cur_step}| {opts.total_steps} \n"
-                            f"Avg Loss:   \t{loss_sum / opts.eval_freq: .3f}\n"
+                            f"Avg Loss:   \t{loss_sum / opts.eval_freq: .5f}\n"
                             f"Eval score: \t{100 * em_score : .2f} \n"
-                            f"Cur lr :    \t{scheduler.get_last_lr()[0] :.5f}")
+                            f"Cur lr :    \t{scheduler.get_last_lr()[0] :.7f}")
+
                 loss_sum = 0.0
 
             if cur_step % opts.save_freq == 0:
@@ -84,13 +90,13 @@ def evaluate(model, dataset, opts, ):
     em = []
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
-            (candidates_ids, candidates_mask), (passages_ids, passages_mask) = batch
-            example = dataset[i]
+            index, (candidates_ids, candidates_mask), (passages_ids, passages_mask) = batch
+            example = dataset[index[0]]
             answers = example["answers"]
             scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
                                     (passages_ids.cuda(), passages_mask.cuda()))
             index = torch.argmax(scores[0])
-            best_ans=example["candidates"][index.item()]
+            best_ans = example["candidates"][index.item()]
             em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
 
     avg_em = Utils.avg_value(em)
@@ -157,6 +163,7 @@ if __name__ == '__main__':
         best_val = 0
     else:
         model = Reranker(opts.encoder_flag, evaluate = opts.evaluate_type, collator = single_collator)
+        model = model.cuda()
         model, optimizer, scheduler, opt_checkpoint, step, best_val = \
             Utils.load_reranker(model, model_path, opts, reset_params = False)
 
