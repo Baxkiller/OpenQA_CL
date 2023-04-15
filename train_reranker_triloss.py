@@ -1,9 +1,9 @@
 # -*- codeing = utf-8 -*-
-# @Time       : 2023/4/6 15:20
+# @Time       : 2023/4/15 17:17
 # @Author     : Baxkiller
-# @File       : train_reranker.py
+# @File       : train_reranker_triloss.py
 # @Software   : PyCharm
-# @Description: 训练排序器
+# @Description: 使用tripletMarginLoss作为损失函数分析
 import torch
 from torch.utils.data import DataLoader
 import numpy as np
@@ -16,34 +16,24 @@ from pathlib import Path
 from transformers import AutoTokenizer
 
 
-def RankingLoss(score, summary_score = None, margin = 0.01, gold_margin = 0, gold_weight = 1, no_gold = False,
-                no_cand = False):
-    ones = torch.ones_like(score)
-    loss_func = torch.nn.MarginRankingLoss(0.0)
-    TotalLoss = loss_func(score, score, ones)
-    # candidate loss
-    n = score.size(1)
-    if not no_cand:
-        for i in range(1, n):
-            pos_score = score[:, :-i]
-            neg_score = score[:, i:]
-            pos_score = pos_score.contiguous().view(-1)
-            neg_score = neg_score.contiguous().view(-1)
-            ones = torch.ones_like(pos_score)
-            loss_func = torch.nn.MarginRankingLoss(margin * i)
-            loss = loss_func(pos_score, neg_score, ones)
-            TotalLoss += loss
-    if no_gold:
-        return TotalLoss
-    # gold summary loss
-    pos_score = summary_score.unsqueeze(-1).expand_as(score)
-    neg_score = score
-    pos_score = pos_score.contiguous().view(-1)
-    neg_score = neg_score.contiguous().view(-1)
-    ones = torch.ones_like(pos_score)
-    loss_func = torch.nn.MarginRankingLoss(gold_margin)
-    TotalLoss += gold_weight * loss_func(pos_score, neg_score, ones)
-    return TotalLoss
+def TripMarginLoss(anchor, positive, negative, margin):
+    """
+    anchor:bsz,index_dimen
+    positive:bsz,1,index_dimen
+    negative:bsz,n_neg,index_dimen
+    """
+    # 创建一个TripletMarginLoss对象，设置边界值为0.5
+
+    loss_fun = torch.nn.TripletMarginLoss(margin = margin,)
+
+    # 保持bsz不变，将anchor复制到与negative中负样本数相同
+    anchors = anchor.unsqueeze(1).expand_as(negative)
+    positives = positive.unsqueeze(1).expand_as(negative)
+
+    # 计算损失值
+    loss = loss_fun(anchors, positives, negative)
+    # 打印损失值
+    return loss
 
 
 def train(model, optimizer, scheduler, start_step, datasets, collator, opts, best_val, save_path):
@@ -60,14 +50,19 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
             (indexs, candidates_ids, candidates_mask, passage_ids,
              passage_mask, answers_ids, answers_mask, scores) = batch
 
-            can_scores, gold_scores = model(
-                (candidates_ids.cuda(), candidates_mask.cuda()),
-                (answers_ids.cuda(), answers_mask.cuda()),
-                (passage_ids.cuda(), passage_mask.cuda()),
+            for j, sco in enumerate(scores[0]):
+                if sco == 0:
+                    break
+            negatives_ids = candidates_ids[:, j:, :]
+            negatives_mask = candidates_mask[:, j:, :]
+
+            passage_emb, positive_emb, negative_emb = model.forward_em(
+                (passage_ids.cuda(), passage_mask.cuda()),  # anchor
+                (answers_ids.cuda(), answers_mask.cuda()),  # positive
+                (negatives_ids.cuda(), negatives_mask.cuda()),  # negative
             )
 
-            loss = RankingLoss(can_scores, gold_scores, margin = opts.margin, gold_margin = opts.gold_margin,
-                               gold_weight = opts.gold_weight, no_gold = opts.no_gold)
+            loss = TripMarginLoss(passage_emb, positive_emb, negative_emb, margin = opts.margin)
 
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), opts.clip)
@@ -80,9 +75,8 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
             # if cur_step % 50 == 0:
             #     logger.info(f"Cur loss: {loss}")
 
-            if cur_step % opts.eval_freq == 0 or cur_step == 1:
-                logger.info(f"\nCandidate_scores : {can_scores}"
-                            f"\nGold_scores      : {gold_scores}")
+            if cur_step % opts.eval_freq == 0:
+
                 logger.info("** Evaluate Model! **")
                 em_score = evaluate(model, datasets["eval"], opts)
                 model.train()
@@ -124,9 +118,9 @@ def evaluate(model, dataset, opts, ):
             index, (candidates_ids, candidates_mask), (passages_ids, passages_mask) = batch
             example = dataset.examples[index[0]]
             answers = example["answers"]
-            scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
-                                    (passages_ids.cuda(), passages_mask.cuda()))
-            index_best = torch.argmax(scores[0])
+            distances = model.generate_em((candidates_ids.cuda(), candidates_mask.cuda()),
+                                          (passages_ids.cuda(), passages_mask.cuda()))
+            index_best = torch.argmin(distances)
             best_ans = dataset.get_candidate(index[0])[index_best.item()]
             em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
 

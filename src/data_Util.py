@@ -337,6 +337,7 @@ class CL_Collator():
         # qeustion passages
         ques_context = [concat_question_contexts(example) for example in batch]
         answers = [example["answers"] for example in batch]
+        scores = [example["scores"] for example in batch]
 
         candidates_ids, candidates_mask = encode_batch_list(
             batch = candidates,
@@ -358,7 +359,8 @@ class CL_Collator():
         )
         answers_ids, answers_mask = tok['input_ids'], tok['attention_mask']
 
-        return (index, candidates_ids, candidates_mask, ques_context_ids, ques_context_mask, answers_ids, answers_mask)
+        return (index, candidates_ids, candidates_mask, ques_context_ids,
+                ques_context_mask, answers_ids, answers_mask, torch.tensor(scores))
 
 
 class Single_Collator():

@@ -104,6 +104,62 @@ class Reranker(nn.Module):
 
         return can_scores, gold_scores
 
+    def forward_em(self, passages, positive, negative):
+        """
+        只接受bsz=1,(避免不同样本中正负样本数量不同
+        """
+        assert self.encoder is not None
+        bsz = positive[0].size(0)
+        n_positive = positive[0].size(1)
+        n_negative = negative[0].size(1)
+
+        # 不同example 的candidates合并
+        positive_ids = positive[0].view(-1, positive[0].size(-1))
+        positive_mask = positive[1].view(-1, positive[1].size(-1))
+        positive_out = self.encoder(
+            input_ids = positive_ids,
+            attention_mask = positive_mask
+        )[0]
+        positive_emb = positive_out[:, 0, :]
+
+        negative_out = self.encoder(
+            input_ids = negative[0].view(-1, negative[0].size(-1)),
+            attention_mask = negative[1].view(-1, negative[1].size(-1))
+        )[0]
+        negative_emb = negative_out[:, 0, :].view(bsz, n_negative, -1)
+
+        passages_out = self.encoder(
+            input_ids = passages[0].view(bsz, -1),
+            attention_mask = passages[1].view(bsz, -1),
+        )[0]
+        passages_emb = passages_out[:, 0, :]
+        return passages_emb, positive_emb, negative_emb
+
+    def generate_em(self, candidates: tuple, passages: tuple):
+        pdist = nn.PairwiseDistance(p = 2)
+
+        bsz = candidates[0].size(0)
+        n_candidates = candidates[0].size(1)
+
+        candidates_id = candidates[0].view(-1, candidates[0].size(-1))
+        candidates_mask = candidates[1].view(-1, candidates[1].size(-1))
+        can_out = self.encoder(
+            input_ids = candidates_id,
+            attention_mask = candidates_mask,
+        )[0]
+        candidates_emb = can_out[:, 0, :].view(bsz, n_candidates, -1)
+
+        passages_out = self.encoder(
+            input_ids = passages[0].view(bsz, -1),
+            attention_mask = passages[1].view(bsz, -1),
+        )[0]
+        passages_emb = passages_out[:, 0, :]
+
+        passages_emb = passages_emb.unsqueeze(1).expand_as(candidates_emb)
+
+        distance = pdist(candidates_emb[0], passages_emb[0])
+        return distance
+
     def generate(self, candidates: tuple, passages: tuple):
         """
         使用训练好的排序器，对当前传入的candidates产生评分
