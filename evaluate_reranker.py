@@ -37,13 +37,25 @@ def evaluate(model, dataset, opts, ):
             index, (candidates_ids, candidates_mask), (passages_ids, passages_mask) = batch
             example = dataset.examples[index[0]]
             answers = example["answers"]
-            scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
-                                    (passages_ids.cuda(), passages_mask.cuda()))
-            index_best = torch.argmax(scores[0])
-            best_ans = dataset.get_candidate(index[0])[index_best.item()]
-            em_score = evaluate_metrics.evaluate_single_ans(best_ans, answers)
-            rouge_score = evaluate_metrics.rouge_single_ans(best_ans, answers)
-            meteor_score = Utils.avg_value(evaluate_metrics.meteor_group_ans([best_ans], answers))
+
+            if opts.evaluate_type == "em":
+                distance = model.generate_em((candidates_ids.cuda(), candidates_mask.cuda()),
+                                             (passages_ids.cuda(), passages_mask.cuda()))
+                indices = torch.argsort(distance, dim = 0, descending = False)
+
+            else:
+                scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
+                                        (passages_ids.cuda(), passages_mask.cuda()))
+                indices = torch.argsort(scores, dim = 0, descending = True)
+
+            best_ans = []
+            candidates = dataset.get_candidate(index[0])
+            for topi in range(opts.recall):
+                best_ans.append(candidates[indices[topi].item()])
+
+            em_score = evaluate_metrics.em_group_ans(best_ans, answers)
+            rouge_score = evaluate_metrics.rouge_group_ans(best_ans, answers)
+            meteor_score = Utils.avg_value(evaluate_metrics.meteor_group_ans(best_ans, answers))
 
             em.append(em_score)
             rouge.append(rouge_score)
@@ -51,14 +63,14 @@ def evaluate(model, dataset, opts, ):
 
             if (i + 1) % opts.eval_freq == 0:
                 logger.info(f"Evaluate at {i + 1} / {len(dataset)}"
-                            f"\naverage em score    : {Utils.avg_value(em[i - opts.eval_freq + 1:i + 1])}"
-                            f"\naverage rouge score : {Utils.avg_value(rouge[i - opts.eval_freq + 1:i + 1])}"
-                            f"\navarage meteor score: {Utils.avg_value(meteor[i - opts.eval_freq + 1:i + 1])}")
+                            f"\naverage em score     r{opts.recall}: {Utils.avg_value(em[i - opts.eval_freq + 1:i + 1]).item()}"
+                            f"\naverage rouge score  r{opts.recall}: {Utils.avg_value(rouge[i - opts.eval_freq + 1:i + 1]).item()}"
+                            f"\navarage meteor score r{opts.recall}: {Utils.avg_value(meteor[i - opts.eval_freq + 1:i + 1]).item()}")
 
         logger.info(f"The average value of all metrics: "
-                    f"\n EM     : {Utils.avg_value(em)}"
-                    f"\n ROUGE  : {Utils.avg_value(rouge)}"
-                    f"\n METEOR : {Utils.avg_value(meteor)}")
+                    f"\n EM      r{opts.recall}: {Utils.avg_value(em).item()}"
+                    f"\n ROUGE   r{opts.recall}: {Utils.avg_value(rouge).item()}"
+                    f"\n METEOR  r{opts.recall}: {Utils.avg_value(meteor).item()}")
 
 
 if __name__ == '__main__':

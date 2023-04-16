@@ -89,6 +89,7 @@ class Options(object):
         self.parser.add_argument("--gold_margin", type = float, default = 0.0)
         self.parser.add_argument("--gold_weight", type = float, default = 1.0)
         self.parser.add_argument("--no_gold", action = "store_true")
+        self.parser.add_argument("--recall", type = int, default = 1)
 
     def add_generate_passage_scores(self):
         self.parser.add_argument('--write_results', action = 'store_true')

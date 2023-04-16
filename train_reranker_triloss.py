@@ -24,7 +24,7 @@ def TripMarginLoss(anchor, positive, negative, margin):
     """
     # 创建一个TripletMarginLoss对象，设置边界值为0.5
 
-    loss_fun = torch.nn.TripletMarginLoss(margin = margin,)
+    loss_fun = torch.nn.TripletMarginLoss(margin = margin, )
 
     # 保持bsz不变，将anchor复制到与negative中负样本数相同
     anchors = anchor.unsqueeze(1).expand_as(negative)
@@ -75,21 +75,21 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
             # if cur_step % 50 == 0:
             #     logger.info(f"Cur loss: {loss}")
 
-            if cur_step % opts.eval_freq == 0:
+            if cur_step % opts.eval_freq == 0 or cur_step == 1:
 
                 logger.info("** Evaluate Model! **")
                 em_score = evaluate(model, datasets["eval"], opts)
                 model.train()
 
+                logger.info(f"Evaluate at:\t {cur_step} | {opts.total_steps} \n"
+                            f"Avg Loss:   \t {loss_sum / opts.eval_freq: .5f}\n"
+                            f"Eval score: \t {100 * em_score : .2f} \n"
+                            f"Cur lr :    \t {scheduler.get_last_lr()[0] :.7f}")
+
                 if em_score > best_val:
                     best_val = em_score
                     Utils.save_reranker(model, optimizer, scheduler, cur_step,
                                         em_score, save_path, opts, "best_dev")
-
-                logger.info(f"Evaluate at:\t{cur_step}| {opts.total_steps} \n"
-                            f"Avg Loss:   \t{loss_sum / opts.eval_freq: .5f}\n"
-                            f"Eval score: \t{100 * em_score : .2f} \n"
-                            f"Cur lr :    \t{scheduler.get_last_lr()[0] :.7f}")
 
                 loss_sum = 0.0
 
@@ -120,12 +120,19 @@ def evaluate(model, dataset, opts, ):
             answers = example["answers"]
             distances = model.generate_em((candidates_ids.cuda(), candidates_mask.cuda()),
                                           (passages_ids.cuda(), passages_mask.cuda()))
-            index_best = torch.argmin(distances)
-            best_ans = dataset.get_candidate(index[0])[index_best.item()]
-            em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
+
+            # index_best = torch.argmin(distances)
+            # best_ans = dataset.get_candidate(index[0])[index_best.item()]
+            # em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
+
+            indices = torch.argsort(distances, dim = 0)
+            best_ans = []
+            for topi in range(opts.recall):
+                best_ans.append(dataset.get_candidate(index[0])[indices[topi].item()])
+            em.append(evaluate_metrics.em_group_ans(best_ans, answers))
 
     avg_em = Utils.avg_value(em)
-    return avg_em
+    return avg_em.item()
 
 
 if __name__ == '__main__':
@@ -170,8 +177,12 @@ if __name__ == '__main__':
     logger.info("** Generating DataLoader... **")
     data_examples = {}
     datasets = {}
+
     for i, k in enumerate(data_name):
-        data_examples[k] = data_Util.load_data_candidates(data_paths[i])
+        if k == "train":
+            data_examples[k] = data_Util.load_data(data_paths[i])
+        else:
+            data_examples[k] = data_Util.load_data_candidates(data_paths[i])
         if data_examples[k] is None:
             continue
         datasets[k] = data_Util.CL_Dataset(data_examples[k], opts)

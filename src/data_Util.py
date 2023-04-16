@@ -270,6 +270,12 @@ class CL_Dataset(torch_data.Dataset):
 
         scores = self.evaluate_metric(candidates, [answers])
         scores = np.array(scores)
+
+        if self.data_config["standard_metric"] != "em":
+            _, unique_indices = np.unique(scores, return_index = True)
+            candidates = np.array(candidates)[unique_indices]
+            scores = np.array(scores)[unique_indices]
+
         indices = np.argsort(scores)[::-1]
         candidates = np.array(candidates)[indices]
 
@@ -291,18 +297,14 @@ class CL_Dataset(torch_data.Dataset):
         # _, unique_indices = np.unique([evaluate_metrics.normalize_answer(c) for c in candidates], return_index = True)
         # candidates = np.array(candidates)[unique_indices]
         # scores = np.array(scores)[unique_indices]
+        if self.data_config["standard_metric"] != "em":
+            _, unique_indices = np.unique(scores, return_index = True)
+            candidates = np.array(candidates)[unique_indices]
+            scores = np.array(scores)[unique_indices]
+
         indices = np.argsort(scores)[::-1]
         candidates = np.array(candidates)[indices]
         scores = scores[indices]
-
-        # if len(scores) > self.data_config["n_candidates"]:
-        #     candidates = candidates[:self.data_config["n_candidates"]]
-        #     scores = scores[:self.data_config["n_candidates"]]
-        # else:
-        #     to_append = self.data_config["n_candidates"] - len(scores)
-        #     for i in range(to_append):
-        #         candidates = np.append(candidates, "")
-        #         scores = np.append(scores, 0.0)
 
         single_context_format = self.data_config["title_prefix"] + " {} " + \
                                 self.data_config["context_prefix"] + " {}"

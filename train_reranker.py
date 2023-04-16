@@ -126,12 +126,19 @@ def evaluate(model, dataset, opts, ):
             answers = example["answers"]
             scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
                                     (passages_ids.cuda(), passages_mask.cuda()))
-            index_best = torch.argmax(scores[0])
-            best_ans = dataset.get_candidate(index[0])[index_best.item()]
-            em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
+            # index_best = torch.argmax(scores[0])
+            # best_ans = dataset.get_candidate(index[0])[index_best.item()]
+            # em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
+
+            indices = torch.argsort(scores, dim = 0, descending = True)
+            best_ans = []
+            candidates = dataset.get_candidate(index[0])
+            for topi in range(opts.recall):
+                best_ans.append(candidates[indices[topi].item()])
+            em.append(evaluate_metrics.em_group_ans(best_ans, answers))
 
     avg_em = Utils.avg_value(em)
-    return avg_em
+    return avg_em.item()
 
 
 if __name__ == '__main__':
