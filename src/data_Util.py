@@ -337,7 +337,8 @@ class CL_Collator():
         index = [example["index"] for example in batch]
         candidates = [example["candidates"] for example in batch]
         # qeustion passages
-        ques_context = [concat_question_contexts(example) for example in batch]
+        # ques_context = [concat_question_contexts(example) for example in batch]
+        ques_context = [example["passages"] for example in batch]
         answers = [example["answers"] for example in batch]
         scores = [example["scores"] for example in batch]
 

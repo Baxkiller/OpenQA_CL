@@ -180,7 +180,7 @@ if __name__ == '__main__':
 
     for i, k in enumerate(data_name):
         if k == "train":
-            data_examples[k] = data_Util.load_data(data_paths[i])
+            data_examples[k] = data_Util.load_data_candidates(data_paths[i])
         else:
             data_examples[k] = data_Util.load_data_candidates(data_paths[i])
         if data_examples[k] is None:

@@ -42,6 +42,7 @@ class Options(object):
         self.parser.add_argument("--not_do_sample", action = "store_true")
         self.parser.add_argument("--not_early_stopping", action = "store_true")
         self.parser.add_argument("--temperature", type = float, default = 0.8)
+        self.parser.add_argument("--no_repeat_ngram", type = int, default = 1)
 
     # options needed for training reader
     def add_train_reader(self):

@@ -40,7 +40,8 @@ def evaluate_metric(model, dataloaders, tokenizer, opts, datasets, save_path):
                     num_beams = n_candidate,
                     num_return_sequences = n_candidate,
                     early_stopping = True,
-                    temperature = opts.temperature
+                    temperature = opts.temperature,
+                    no_repeat_ngram_size = opts.no_repeat_ngram,
                 )
 
                 each_question = []

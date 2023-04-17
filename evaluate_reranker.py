@@ -46,7 +46,7 @@ def evaluate(model, dataset, opts, ):
             else:
                 scores = model.generate((candidates_ids.cuda(), candidates_mask.cuda()),
                                         (passages_ids.cuda(), passages_mask.cuda()))
-                indices = torch.argsort(scores, dim = 0, descending = True)
+                indices = torch.argsort(scores[0], dim = 0, descending = True)
 
             best_ans = []
             candidates = dataset.get_candidate(index[0])

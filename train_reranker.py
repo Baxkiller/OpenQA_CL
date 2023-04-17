@@ -130,7 +130,7 @@ def evaluate(model, dataset, opts, ):
             # best_ans = dataset.get_candidate(index[0])[index_best.item()]
             # em.append(evaluate_metrics.evaluate_single_ans(best_ans, answers))
 
-            indices = torch.argsort(scores, dim = 0, descending = True)
+            indices = torch.argsort(scores[0], dim = 0, descending = True)
             best_ans = []
             candidates = dataset.get_candidate(index[0])
             for topi in range(opts.recall):
