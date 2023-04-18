@@ -50,11 +50,18 @@ def train(model, optimizer, scheduler, start_step, datasets, collator, opts, bes
             (indexs, candidates_ids, candidates_mask, passage_ids,
              passage_mask, answers_ids, answers_mask, scores) = batch
 
-            for j, sco in enumerate(scores[0]):
-                if sco == 0:
-                    break
-            negatives_ids = candidates_ids[:, j:, :]
-            negatives_mask = candidates_mask[:, j:, :]
+            # for j, sco in enumerate(scores[0]):
+            #     if sco == 0:
+            #         break
+            # negatives_ids = candidates_ids[:, j:, :]
+            # negatives_mask = candidates_mask[:, j:, :]
+
+            if len(candidates_ids[0]) < 4:
+                cur_step -= 1
+                continue
+
+            negatives_ids = candidates_ids[:, -2:, :]
+            negatives_mask = candidates_mask[:, -2:, :]
 
             passage_emb, positive_emb, negative_emb = model.forward_em(
                 (passage_ids.cuda(), passage_mask.cuda()),  # anchor

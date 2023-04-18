@@ -13,16 +13,43 @@
 
 # import os
 import torch
+
 # import pathlib
+# import numpy as np
+#
+# scores = [0.12, 0.5, 0.3, 0.25, 0.3, 0.12]
+# candidates = ["a", "b", "c", "d", "e", "f"]
+# scores = np.array(scores)
+#
+# _, unique_indices = np.unique(scores, return_index = True)
+# candidates = np.array(candidates)[unique_indices]
+# scores = np.array(scores)[unique_indices]
+#
+# indices = np.argsort(scores)[::-1]
+# candidates = np.array(candidates)[indices]
+# scores = scores[indices]
+#
+# print(scores)
+# print(candidates)
+
+# t = torch.tensor([1.2, 3, 4.5, 7])
+# print(t[-2:])
 import numpy as np
 
-temp = [1, 2]
-t = [1, 2, 3, 4, 5, 6]
-np.random.shuffle(t)
-res = np.ones_like(temp)
-t.extend(res)
-print(t)
+scores = np.array([0.75, 0.2, 0.33])
+value = np.array(["abc", "b", "c"])
 
+answer = "Hello"
+
+scores = np.insert(scores, 0, 1.0)
+value = np.insert(value, 0, answer)
+
+print(value)
+print(scores)
+
+# print(sum(t)/len(t))
+# print(t.data)
+# print(list(t.numpy().tolist()))
 
 # ttt = pathlib.Path("datas") / "t.txt"
 # a = torch.ones(2, 2)
@@ -30,6 +57,50 @@ print(t)
 # b = None
 # b = torch.load(ttt)
 # print(b)
+#
+# def TripMarginLoss(anchor, positive, negative):
+#     """
+#     anchor:bsz,index_dimen
+#     positive:bsz,1,index_dimen
+#     negative:bsz,n_neg,index_dimen
+#     """
+#     # 创建一个TripletMarginLoss对象，设置边界值为0.5
+#     print(negative.size())
+#
+#     loss_fun = torch.nn.TripletMarginLoss(margin = 0.5)
+#
+#     # 保持bsz不变，将anchor复制到与negative中负样本数相同
+#     anchors = anchor.unsqueeze(1).expand_as(negative)
+#     positives = positive.unsqueeze(1).expand_as(negative)
+#
+#     # 计算损失值
+#     loss = loss_fun(anchors, positives, negative)
+#     # 打印损失值
+#     return loss
+#
+#
+# negative = torch.arange(20)
+# negative = negative.view(2, 2, 5)
+#
+# anchor = torch.arange(10)
+# anchor = anchor.view(2, 5)
+# # anchor = anchor.unsqueeze(1).expand_as(negative)
+#
+# positive = torch.arange(20, 30)
+# positive = positive.view(2, 5)
+# # positive = positive.unsqueeze(1).expand_as(negative)
+#
+# loss = TripMarginLoss(anchor, positive, negative)
+# # 加起来是20.6941,两者的平均值
+#
+# loss1 = TripMarginLoss(anchor[0][None], positive[0][None], negative[0][None])
+# print(loss1)
+# # loss1=23.7843
+# loss2 = TripMarginLoss(anchor[1][None], positive[1][None], negative[1][None])
+# print(loss2)
+# # loss2=17.6039
+#
+# loss1.backwards()
 
 # 测试argparse的浮点数使用
 # 可行

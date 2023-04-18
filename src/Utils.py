@@ -155,7 +155,7 @@ def load_reranker(model, load_path: pathlib.Path, opts, reset_params = False):
 
     model.load_state_dict(torch.load(model_path, map_location = device))
 
-    if optimizer_path.exists():
+    if optimizer_path.exists() and opts.auto_load:
         checkpoint = torch.load(optimizer_path, map_location = device)
         opt_checkpoint = checkpoint["opts"]
         step = checkpoint["step"]
