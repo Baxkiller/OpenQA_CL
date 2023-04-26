@@ -166,7 +166,7 @@ def evaluate_passages_sort(scores: list, inverse_cnt: list, topk_true: dict, top
         inverse_cnt.append(inverse_cnt_compute(decrease_score_index))
 
         for k in topk_true:
-            predict_topk = (decrease_score_index[:, k] < k).mean()
+            predict_topk = (decrease_score_index[:k] < k).mean()
             topk_true[k].append(predict_topk)
         for k in topk_last_idx:
             lt_k = decrease_score_index < k

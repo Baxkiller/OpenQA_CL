@@ -72,7 +72,7 @@ class Options(object):
         self.add_data_process()
         self.add_candidates()
         self.parser.add_argument("--question_maxlength", type = int, default = 40)
-        self.parser.add_argument("--context_maxlegnth", type = int, default = 200)
+        self.parser.add_argument("--context_maxlength", type = int, default = 200)
         self.parser.add_argument("--total_steps", type = int, default = 10000)
         self.parser.add_argument("--n_context", type = int, default = 1)
 

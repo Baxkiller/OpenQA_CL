@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import DataLoader
 from src.options import Options
-from src.model import Retriever
+from src.FiD import Retriever
 from src.logger import init_logger
 from src import Utils, data_Util, evaluate_metrics
 
@@ -93,7 +93,7 @@ def evaluate(model, dataloader, opts):
     inversions = []
 
     with torch.no_grad():
-        for i, batch in dataloader:
+        for i, batch in enumerate(dataloader):
             (indexs, question_ids, question_mask, passage_ids, passage_mask, gold_score) = batch
             _, _, scores, loss = model(
                 question_ids.cuda(),
@@ -111,7 +111,7 @@ def evaluate(model, dataloader, opts):
         avg_topk[k] = np.mean(avg_topk[k])
         idx_topk[k] = np.mean(idx_topk[k])
 
-    return np.mean(total_loss), np.mean(inversions), avg_topk, idx_topk
+    return float(Utils.avg_value(total_loss)), float(Utils.avg_value(inversions)), avg_topk, idx_topk
 
 
 if __name__ == '__main__':
@@ -141,7 +141,7 @@ if __name__ == '__main__':
     collator = data_Util.R_Collator(tokenizer, opts.question_maxlength, opts.context_maxlength)
 
     logger.info("** Loadding data to get Dataloader. **")
-    data_paths = {"train": opts.train_data, "eval": opts.eval_data}
+    data_paths = {"train": Path(opts.train_data), "eval": Path(opts.eval_data)}
     datasets, dataloaders = {}, {}
     for k in ["train", "eval"]:
         examples = data_Util.load_data(data_paths[k])

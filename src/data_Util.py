@@ -84,6 +84,49 @@ class Collator():
                 ques_context_ids, ques_context_mask)
 
 
+class T5_Collator():
+    def __init__(self, tokenizer: T5Tokenizer, context_maxlength, answer_maxlength):
+        self.tokenizer = tokenizer
+        self.context_maxlength = context_maxlength
+        self.answer_maxlength = answer_maxlength
+
+    def __call__(self, batch):
+        """
+        传入一个batch的数据进行填充
+        """
+        assert batch[0]["target"] is not None
+
+        index = torch.tensor([example["index"] for example in batch])
+        target = [example["target"] for example in batch]
+        # ques_context = [concat_question_contexts(example) for example in batch]
+        ques = [example["question"] for example in batch]
+
+        target_tok = self.tokenizer.batch_encode_plus(
+            target,
+            max_length = self.answer_maxlength if self.answer_maxlength > 0 else None,
+            pad_to_max_length = True,
+            return_tensors = 'pt',
+            truncation = True if self.answer_maxlength > 0 else False
+        )
+
+        target_ids = target_tok["input_ids"]
+        target_mask = target_tok["attention_mask"].bool()
+        target_ids = target_ids.masked_fill(~target_mask, -100)
+
+        ques_tok = self.tokenizer.batch_encode_plus(
+            ques,
+            max_length = self.context_maxlength if self.context_maxlength > 0 else None,
+            pad_to_max_length = True,
+            return_tensors = 'pt',
+            truncation = True if self.context_maxlength > 0 else False
+        )
+
+        ques_context_ids, ques_context_mask = ques_tok["input_ids"], ques_tok["attention_mask"].bool()
+
+        return (index, target_ids, target_mask,
+                ques_context_ids, ques_context_mask)
+
+
 class R_Collator():
     """
     考虑到Retriever的填充器作用对象
@@ -111,7 +154,7 @@ class R_Collator():
 
         if examples[0]['passages'] is not None:
             passages = [example['passages'] for example in examples]
-            passages_id, passages_mask = \
+            passages_ids, passages_mask = \
                 encode_batch_list(passages, tokenizer = self.tokenizer, max_length = self.context_maxlength)
 
         question_token = self.tokenizer.batch_encode_plus(
