@@ -53,9 +53,9 @@ def evaluate(model, dataset, opts, ):
             for topi in range(opts.recall):
                 best_ans.append(candidates[indices[topi].item()])
 
-            em_score = evaluate_metrics.em_group_ans(best_ans, answers)
-            rouge_score = evaluate_metrics.rouge_group_ans(best_ans, answers)
-            meteor_score = Utils.avg_value(evaluate_metrics.meteor_group_ans(best_ans, answers))
+            em_score = max(evaluate_metrics.em_group_ans(best_ans, answers))
+            rouge_score = max(evaluate_metrics.rouge_group_ans(best_ans, answers))
+            meteor_score = max(evaluate_metrics.meteor_group_ans(best_ans, answers))
 
             em.append(em_score)
             rouge.append(rouge_score)
@@ -96,11 +96,6 @@ if __name__ == '__main__':
     logger = src.logger.init_logger(checkpoint_path / 'run.log')
 
     tokenizer = AutoTokenizer.from_pretrained(opts.encoder_flag)
-    collator = data_Util.CL_Collator(
-        tokenizer = tokenizer,
-        answer_maxlength = opts.answer_maxlength,
-        passage_maxlength = opts.text_maxlength,
-    )
 
     single_collator = data_Util.Single_Collator(
         tokenizer = tokenizer,

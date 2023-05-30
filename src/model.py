@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from src import evaluate_metrics
 from torch import nn, einsum
-from transformers import T5ForConditionalGeneration, PreTrainedModel, BertModel
+from transformers import T5ForConditionalGeneration, PreTrainedModel, BertModel, LongformerModel
 
 
 # 本模型中的loss，不是直接调用上层的forward函数得到的

@@ -28,7 +28,9 @@ def encode_batch_list(batch, tokenizer, max_length):
             max_length = max_length,
             pad_to_max_length = True,
             return_tensors = 'pt',
-            truncation = True
+            truncation = True,
+            #
+            padding="max_length",
         )
 
         ids.append(out['input_ids'][None])
@@ -388,7 +390,7 @@ class CL_Collator():
         candidates_ids, candidates_mask = encode_batch_list(
             batch = candidates,
             tokenizer = self.tokenizer,
-            max_length = self.answer_maxlength
+            max_length = self.answer_maxlength,
         )
 
         ques_context_ids, ques_context_mask = encode_batch_list(
@@ -401,7 +403,7 @@ class CL_Collator():
             text = answers,
             max_length = self.answer_maxlength,
             padding = "max_length",
-            return_tensors = 'pt'
+            return_tensors = 'pt',
         )
         answers_ids, answers_mask = tok['input_ids'], tok['attention_mask']
 
